@@ -25,6 +25,32 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+@keyframes track-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.track-reveal {
+  animation: track-reveal 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.track-reveal-delay {
+  animation-delay: 100ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track-reveal,
+  .track-reveal-delay {
+    animation: none;
+  }
+}
+
 @media print {
   body * {
     visibility: hidden;

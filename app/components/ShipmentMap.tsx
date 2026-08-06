@@ -110,7 +110,7 @@ export default function ShipmentMap({ origin, currentLocation, destination }: Sh
   const route = points.map((point) => point.position);
 
   return (
-    <section className="overflow-hidden rounded-[1.5rem] border border-slate-200/80 bg-white shadow-[0_18px_45px_-22px_rgba(15,23,42,0.28)] lg:col-span-2">
+    <section className="overflow-hidden rounded-[1.75rem] border border-slate-200/80 bg-white shadow-[0_22px_55px_-28px_rgba(15,23,42,0.32)] lg:col-span-2">
       <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 sm:py-6">
         <div>
           <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.2em] text-blue-600">Live route</p>
@@ -123,7 +123,7 @@ export default function ShipmentMap({ origin, currentLocation, destination }: Sh
         </div>
       </div>
 
-      <div className="relative h-[22rem] w-full sm:h-[28rem]">
+      <div className="relative h-[22rem] w-full border-t border-white sm:h-[30rem]">
         {loading && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-slate-100 text-sm font-semibold text-slate-500">Plotting shipment route...</div>}
         {error && <div className="absolute inset-0 z-[500] flex items-center justify-center bg-slate-100 px-6 text-center text-sm font-semibold text-slate-600">{error}</div>}
         <MapContainer center={[0, 0]} zoom={2} scrollWheelZoom className="h-full w-full" aria-label="Interactive shipment route map">

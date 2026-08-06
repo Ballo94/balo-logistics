@@ -57,7 +57,7 @@ export default function ShipmentTimeline({ shipmentStatus, history }: ShipmentTi
   });
 
   return (
-    <section className="rounded-[1.5rem] border border-slate-200/80 bg-white p-5 shadow-[0_18px_45px_-22px_rgba(15,23,42,0.28)] sm:p-8">
+    <section className="rounded-[1.75rem] border border-slate-200/80 bg-white p-5 shadow-[0_22px_55px_-28px_rgba(15,23,42,0.32)] sm:p-8 lg:p-10">
       <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.2em] text-blue-600">Live progress</p>
       <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <h2 className="text-2xl font-extrabold tracking-[-0.02em]">Shipment Progress</h2>

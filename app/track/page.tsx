@@ -47,6 +47,14 @@ function displayDate(value: string | null) {
   }).format(date);
 }
 
+function statusBadgeClass(status: string | null) {
+  const value = status?.trim().toLowerCase() ?? "";
+  if (/delivered|complete/.test(value)) return "bg-emerald-50 text-emerald-700 ring-emerald-600/20";
+  if (/delayed|issue|exception/.test(value)) return "bg-red-50 text-red-700 ring-red-600/20";
+  if (/out for delivery/.test(value)) return "bg-violet-50 text-violet-700 ring-violet-600/20";
+  return "bg-blue-50 text-blue-700 ring-blue-600/20";
+}
+
 export default function TrackPage() {
   const [trackingNumber, setTrackingNumber] = useState("");
   const [shipment, setShipment] = useState<Shipment | null>(null);
@@ -137,10 +145,10 @@ export default function TrackPage() {
 
   return (
     <main className="min-h-screen bg-[#f4f6f9] text-slate-950">
-      <header className="relative z-20 border-b border-white/10 bg-[#071a33] text-white shadow-lg shadow-slate-950/10">
+      <header className="relative z-20 border-b border-white/10 bg-[#06172d] text-white shadow-lg shadow-slate-950/10">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link href="/" className="group flex items-center gap-3" aria-label="Balo Logistics home">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-600 shadow-lg shadow-blue-950/30 transition group-hover:bg-blue-500">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-blue-600 shadow-lg shadow-blue-950/30 transition group-hover:-translate-y-0.5 group-hover:bg-blue-500" aria-label="Company logo placeholder">
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></svg>
             </span>
             <span>
@@ -155,26 +163,27 @@ export default function TrackPage() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden bg-[#0a2d59] px-4 pb-36 pt-20 text-white sm:px-6 sm:pb-40 sm:pt-24 lg:px-8 lg:pb-44 lg:pt-28">
-        <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(115deg,rgba(37,99,235,0.5),transparent_50%,rgba(6,20,40,0.5))]" />
+      <section className="relative overflow-hidden bg-[#082952] px-4 pb-36 pt-20 text-white sm:px-6 sm:pb-40 sm:pt-24 lg:px-8 lg:pb-44 lg:pt-28">
+        <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(115deg,rgba(37,99,235,0.56),transparent_52%,rgba(6,20,40,0.62))]" />
+        <div aria-hidden="true" className="absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.7)_1px,transparent_1px)] [background-size:44px_44px]" />
         <div aria-hidden="true" className="absolute -right-20 -top-44 h-[32rem] w-[32rem] rounded-full border-[90px] border-white/[0.04]" />
         <div aria-hidden="true" className="absolute -bottom-44 -left-36 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
-        <div className="relative mx-auto max-w-4xl text-center">
+        <div className="track-reveal relative mx-auto max-w-4xl text-center">
           <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-950/30 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.2em] text-blue-100 backdrop-blur">
             <span className="h-2 w-2 rounded-full bg-orange-400 shadow-[0_0_0_5px_rgba(251,146,60,0.15)]" /> Live shipment tracking
           </div>
-          <h1 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.045em] sm:text-6xl lg:text-7xl">Global logistics.<br className="hidden sm:block" /> Fully visible.</h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-blue-100/90 sm:text-lg">
-            Enter your tracking number for the latest location, delivery estimate and shipment updates.
+          <h1 className="text-4xl font-black leading-[1.02] tracking-[-0.05em] sm:text-6xl lg:text-[4.75rem]">Track every mile.<br className="hidden sm:block" /> Trust every delivery.</h1>
+          <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-blue-100/90 sm:text-lg">
+            Real-time global shipment visibility from origin to final delivery, powered by Balo Logistics.
           </p>
         </div>
       </section>
 
       <div className="relative mx-auto -mt-24 max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">
-        <form onSubmit={searchShipment} className="rounded-[1.75rem] border border-white bg-white p-5 shadow-[0_28px_75px_-22px_rgba(15,23,42,0.35)] sm:p-8 lg:p-9">
+        <form onSubmit={searchShipment} className="track-reveal track-reveal-delay rounded-[1.75rem] border border-white bg-white p-5 shadow-[0_28px_75px_-22px_rgba(15,23,42,0.35)] sm:p-8 lg:p-9">
           <div className="mb-3 flex items-center justify-between gap-4">
             <label htmlFor="tracking-number" className="block text-sm font-extrabold text-slate-800">Tracking Number</label>
-            <span className="hidden text-xs font-medium text-slate-400 sm:block">Secure real-time lookup</span>
+            <span className="hidden items-center gap-2 text-xs font-semibold text-slate-400 sm:inline-flex"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-emerald-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>Secure real-time lookup</span>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
@@ -233,17 +242,11 @@ export default function TrackPage() {
                 <div className="grid gap-2 py-4 sm:grid-cols-[9rem_1fr] sm:gap-4">
                   <dt className="text-[0.68rem] font-extrabold uppercase tracking-[0.12em] text-slate-400">Shipment Status</dt>
                   <dd className="sm:text-right">
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${isDelivered ? "bg-emerald-100 text-emerald-800" : "bg-blue-100 text-blue-800"}`}>
+                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ring-1 ring-inset ${statusBadgeClass(shipment.shipment_status)}`}>
                       {displayValue(shipment.shipment_status)}
                     </span>
                   </dd>
                 </div>
-                {shipment.item_description?.trim() && (
-                  <div className="py-5">
-                    <dt className="text-[0.68rem] font-extrabold uppercase tracking-[0.12em] text-slate-400">Item Description</dt>
-                    <dd className="mt-2.5 leading-7 text-slate-700">{shipment.item_description}</dd>
-                  </div>
-                )}
               </dl>
             </section>
 
@@ -262,8 +265,12 @@ export default function TrackPage() {
                 <p className="mt-4 text-xl font-black text-slate-900">{displayValue(shipment.current_location)}</p><div className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-extrabold text-blue-700"><span className="h-2 w-2 animate-pulse rounded-full bg-blue-600" />Latest reported location</div>
               </InfoCard>
 
-              <InfoCard title="Transport Information" eyebrow="Freight mode" className="md:col-span-2 xl:col-span-12" icon={<TransportIcon />}>
+              <InfoCard title="Transport Information" eyebrow="Freight mode" className="xl:col-span-6" icon={<TransportIcon />}>
                 <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[0.65rem] font-extrabold uppercase tracking-wider text-slate-400">Transport Mode</p><p className="mt-1 text-xl font-black text-slate-900">{displayValue(shipment.transport_mode)}</p></div><span className="w-fit rounded-xl bg-blue-50 px-4 py-3 text-sm font-extrabold text-blue-700">{shipment.transport_mode?.toLowerCase() === "sea" ? "Ocean Freight" : shipment.transport_mode?.toLowerCase() === "air" ? "Air Freight" : "Freight Service"}</span></div>
+              </InfoCard>
+
+              <InfoCard title="Cargo Information" eyebrow="Consignment contents" className="xl:col-span-6" icon={<CargoIcon />}>
+                <p className="mt-4 text-lg font-black text-slate-900">{displayValue(shipment.item_description)}</p><p className="mt-2 text-sm leading-6 text-slate-500">Cargo description recorded against this tracking number.</p>
               </InfoCard>
             </div>
 
@@ -293,3 +300,4 @@ function RouteIcon() { return <CardIcon><circle cx="5" cy="18" r="2"/><circle cx
 function CalendarIcon() { return <CardIcon><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></CardIcon>; }
 function LocationIcon() { return <CardIcon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></CardIcon>; }
 function TransportIcon() { return <CardIcon><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></CardIcon>; }
+function CargoIcon() { return <CardIcon><path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="M4 7v10l8 4 8-4V7M12 11v10"/></CardIcon>; }
