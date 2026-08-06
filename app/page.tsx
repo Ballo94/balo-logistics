@@ -109,7 +109,7 @@ function HeroSlideshow() {
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (reducedMotion.matches) return;
-    const timer = window.setInterval(() => { setPreviousIndex(visibleIndex); setRequestedIndex((visibleIndex + 1) % HERO_SLIDES.length); }, 6000);
+    const timer = window.setInterval(() => { setPreviousIndex(visibleIndex); setRequestedIndex((visibleIndex + 1) % HERO_SLIDES.length); }, 16000);
     return () => window.clearInterval(timer);
   }, [visibleIndex]);
 
