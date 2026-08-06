@@ -127,11 +127,6 @@ export default function TrackPage() {
     ? [
         ["Tracking Number", shipment.tracking_number],
         ["Client Name", shipment.client_name],
-        ["Origin Country", shipment.origin_country],
-        ["Destination Country", shipment.destination_country],
-        ["Current Location", displayValue(shipment.current_location)],
-        ["Transport Mode", displayValue(shipment.transport_mode)],
-        ["Estimated Delivery", displayDate(shipment.estimated_delivery)],
       ]
     : [];
 
@@ -160,23 +155,23 @@ export default function TrackPage() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden bg-[#0a2d59] px-4 pb-32 pt-16 text-white sm:px-6 sm:pb-36 sm:pt-20 lg:px-8 lg:pt-24">
+      <section className="relative overflow-hidden bg-[#0a2d59] px-4 pb-36 pt-20 text-white sm:px-6 sm:pb-40 sm:pt-24 lg:px-8 lg:pb-44 lg:pt-28">
         <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(115deg,rgba(37,99,235,0.5),transparent_50%,rgba(6,20,40,0.5))]" />
         <div aria-hidden="true" className="absolute -right-20 -top-44 h-[32rem] w-[32rem] rounded-full border-[90px] border-white/[0.04]" />
         <div aria-hidden="true" className="absolute -bottom-44 -left-36 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
-        <div className="relative mx-auto max-w-3xl text-center">
+        <div className="relative mx-auto max-w-4xl text-center">
           <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-blue-300/20 bg-blue-950/30 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.2em] text-blue-100 backdrop-blur">
             <span className="h-2 w-2 rounded-full bg-orange-400 shadow-[0_0_0_5px_rgba(251,146,60,0.15)]" /> Live shipment tracking
           </div>
-          <h1 className="text-4xl font-extrabold tracking-[-0.04em] sm:text-5xl lg:text-6xl">Your shipment, in sight.</h1>
+          <h1 className="text-4xl font-extrabold leading-[1.05] tracking-[-0.045em] sm:text-6xl lg:text-7xl">Global logistics.<br className="hidden sm:block" /> Fully visible.</h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-blue-100/90 sm:text-lg">
             Enter your tracking number for the latest location, delivery estimate and shipment updates.
           </p>
         </div>
       </section>
 
-      <div className="relative mx-auto -mt-20 max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">
-        <form onSubmit={searchShipment} className="rounded-[1.5rem] border border-white bg-white p-5 shadow-[0_24px_65px_-18px_rgba(15,23,42,0.28)] sm:p-7 lg:p-8">
+      <div className="relative mx-auto -mt-24 max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">
+        <form onSubmit={searchShipment} className="rounded-[1.75rem] border border-white bg-white p-5 shadow-[0_28px_75px_-22px_rgba(15,23,42,0.35)] sm:p-8 lg:p-9">
           <div className="mb-3 flex items-center justify-between gap-4">
             <label htmlFor="tracking-number" className="block text-sm font-extrabold text-slate-800">Tracking Number</label>
             <span className="hidden text-xs font-medium text-slate-400 sm:block">Secure real-time lookup</span>
@@ -194,10 +189,10 @@ export default function TrackPage() {
                 onChange={(event) => setTrackingNumber(event.target.value)}
                 placeholder="Enter your tracking number"
                 autoComplete="off"
-                className="h-16 w-full rounded-xl border border-slate-200 bg-slate-50/80 pl-14 pr-5 text-base font-semibold tracking-wide outline-none transition placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                className="h-[4.5rem] w-full rounded-2xl border border-slate-200 bg-slate-50/80 pl-14 pr-5 text-lg font-semibold tracking-wide outline-none transition placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
               />
             </div>
-            <button type="submit" disabled={loading} className="inline-flex h-16 min-w-40 items-center justify-center gap-2 rounded-xl bg-blue-600 px-8 font-extrabold text-white shadow-lg shadow-blue-600/25 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-wait disabled:opacity-70 disabled:hover:translate-y-0">
+            <button type="submit" disabled={loading} className="inline-flex h-[4.5rem] min-w-48 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-9 text-base font-extrabold text-white shadow-lg shadow-blue-600/25 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-wait disabled:opacity-70 disabled:hover:translate-y-0">
               {loading ? "Tracking..." : "Track shipment"}
               {!loading && <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5"><path d="m9 18 6-6-6-6" /></svg>}
             </button>
@@ -212,7 +207,7 @@ export default function TrackPage() {
         )}
 
         {shipment && (
-          <div className="mt-10 grid items-start gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-8" aria-live="polite">
+          <div className="mt-10 space-y-7" aria-live="polite">
             <section className="overflow-hidden rounded-[1.5rem] border border-slate-200/80 bg-white shadow-[0_18px_45px_-22px_rgba(15,23,42,0.28)]">
               <div className="relative overflow-hidden border-b-4 border-blue-600 bg-[#071a33] p-6 text-white sm:p-7">
                 <div aria-hidden="true" className="absolute -right-10 -top-16 h-40 w-40 rounded-full border-[28px] border-white/[0.04]" />
@@ -252,6 +247,26 @@ export default function TrackPage() {
               </dl>
             </section>
 
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-12">
+              <InfoCard title="Route Information" eyebrow="Global route" className="xl:col-span-5" icon={<RouteIcon />}>
+                <div className="mt-1 flex items-center gap-4"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-950 text-xs font-black text-white">A</span><div className="min-w-0"><p className="text-[0.65rem] font-extrabold uppercase tracking-wider text-slate-400">Origin Country</p><p className="mt-1 truncate font-bold text-slate-800">{shipment.origin_country}</p></div></div>
+                <div className="ml-5 h-8 border-l-2 border-dashed border-blue-300" />
+                <div className="flex items-center gap-4"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-xs font-black text-white">B</span><div className="min-w-0"><p className="text-[0.65rem] font-extrabold uppercase tracking-wider text-slate-400">Destination Country</p><p className="mt-1 truncate font-bold text-slate-800">{shipment.destination_country}</p></div></div>
+              </InfoCard>
+
+              <InfoCard title="Estimated Delivery" eyebrow="Delivery target" className="xl:col-span-3" icon={<CalendarIcon />} featured>
+                <p className="mt-4 text-2xl font-black tracking-tight text-slate-950">{displayDate(shipment.estimated_delivery)}</p><p className="mt-2 text-sm leading-6 text-slate-500">Latest estimated arrival based on the current shipment plan.</p>
+              </InfoCard>
+
+              <InfoCard title="Current Location" eyebrow="Live position" className="xl:col-span-4" icon={<LocationIcon />}>
+                <p className="mt-4 text-xl font-black text-slate-900">{displayValue(shipment.current_location)}</p><div className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-extrabold text-blue-700"><span className="h-2 w-2 animate-pulse rounded-full bg-blue-600" />Latest reported location</div>
+              </InfoCard>
+
+              <InfoCard title="Transport Information" eyebrow="Freight mode" className="md:col-span-2 xl:col-span-12" icon={<TransportIcon />}>
+                <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[0.65rem] font-extrabold uppercase tracking-wider text-slate-400">Transport Mode</p><p className="mt-1 text-xl font-black text-slate-900">{displayValue(shipment.transport_mode)}</p></div><span className="w-fit rounded-xl bg-blue-50 px-4 py-3 text-sm font-extrabold text-blue-700">{shipment.transport_mode?.toLowerCase() === "sea" ? "Ocean Freight" : shipment.transport_mode?.toLowerCase() === "air" ? "Air Freight" : "Freight Service"}</span></div>
+              </InfoCard>
+            </div>
+
             <ShipmentTimeline shipmentStatus={shipment.shipment_status} history={history} />
 
             <ShipmentMap
@@ -265,3 +280,16 @@ export default function TrackPage() {
     </main>
   );
 }
+
+function InfoCard({ title, eyebrow, icon, className, featured = false, children }: { title: string; eyebrow: string; icon: React.ReactNode; className: string; featured?: boolean; children: React.ReactNode }) {
+  return <article className={`rounded-[1.5rem] border p-6 shadow-[0_16px_40px_-24px_rgba(15,23,42,0.25)] ${featured ? "border-blue-200 bg-gradient-to-br from-blue-50 to-white" : "border-slate-200/80 bg-white"} ${className}`}><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-700">{icon}</span><div><p className="text-[0.62rem] font-extrabold uppercase tracking-[0.18em] text-blue-600">{eyebrow}</p><h3 className="mt-0.5 text-lg font-black tracking-tight text-slate-900">{title}</h3></div></div><div className="mt-5">{children}</div></article>;
+}
+
+function CardIcon({ children }: { children: React.ReactNode }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">{children}</svg>;
+}
+
+function RouteIcon() { return <CardIcon><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M7 18h3a2 2 0 0 0 2-2V8a2 2 0 0 1 2-2h3"/></CardIcon>; }
+function CalendarIcon() { return <CardIcon><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></CardIcon>; }
+function LocationIcon() { return <CardIcon><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></CardIcon>; }
+function TransportIcon() { return <CardIcon><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></CardIcon>; }

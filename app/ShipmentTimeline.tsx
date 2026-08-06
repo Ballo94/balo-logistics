@@ -60,13 +60,30 @@ export default function ShipmentTimeline({ shipmentStatus, history }: ShipmentTi
     <section className="rounded-[1.5rem] border border-slate-200/80 bg-white p-5 shadow-[0_18px_45px_-22px_rgba(15,23,42,0.28)] sm:p-8">
       <p className="text-[0.68rem] font-extrabold uppercase tracking-[0.2em] text-blue-600">Live progress</p>
       <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <h2 className="text-2xl font-extrabold tracking-[-0.02em]">Shipment Timeline</h2>
+        <h2 className="text-2xl font-extrabold tracking-[-0.02em]">Shipment Progress</h2>
         <p className="text-sm font-medium text-slate-500">
           Step {currentIndex + 1} of {stages.length}
         </p>
       </div>
 
-      <ol className="mt-9" aria-label="Shipment progress">
+      <div className="mt-8 overflow-x-auto pb-3">
+        <ol className="flex min-w-[760px]" aria-label="Shipment progress overview">
+          {stages.map((stage, index) => {
+            const isComplete = index < currentIndex;
+            const isCurrent = index === currentIndex;
+            return <li key={stage.title} className="relative flex flex-1 flex-col items-center px-2 text-center">
+              {index < stages.length - 1 && <span aria-hidden="true" className={`absolute left-1/2 top-4 h-1 w-full ${index < currentIndex ? "bg-emerald-500" : "bg-slate-200"}`} />}
+              <span className={`relative z-10 grid h-9 w-9 place-items-center rounded-full border-2 text-xs font-black transition ${isComplete ? "border-emerald-500 bg-emerald-500 text-white" : isCurrent ? "border-blue-600 bg-blue-600 text-white shadow-[0_0_0_7px_rgba(37,99,235,0.13)]" : "border-slate-300 bg-white text-slate-400"}`}>{isComplete ? "✓" : index + 1}</span>
+              <span className={`mt-3 text-xs font-extrabold ${isCurrent ? "text-blue-700" : isComplete ? "text-emerald-700" : "text-slate-400"}`}>{stage.title}</span>
+              {isCurrent && <span className="mt-1 rounded-full bg-blue-50 px-2 py-1 text-[0.6rem] font-black uppercase tracking-wider text-blue-700">Current</span>}
+            </li>;
+          })}
+        </ol>
+      </div>
+
+      <div className="mt-7 border-t border-slate-100 pt-7"><p className="text-[0.68rem] font-extrabold uppercase tracking-[0.2em] text-slate-400">Tracking history</p><h3 className="mt-1 text-xl font-black tracking-tight text-slate-900">Shipment Timeline</h3></div>
+
+      <ol className="mt-7" aria-label="Shipment tracking history">
         {stages.map((stage, index) => {
           const event = eventsByStage.get(index);
           const isComplete = index < currentIndex;
