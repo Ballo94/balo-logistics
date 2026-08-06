@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import ShipmentTimeline from "../ShipmentTimeline";
 import { shipmentProgress } from "../lib/shipment-status";
 import { supabase } from "../lib/supabase";
@@ -33,6 +33,28 @@ export default function TrackPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const shipmentId = shipment?.id;
 
+  const loadShipment = useCallback(async (query: string) => {
+    setLoading(true); setMessage(""); setShipment(null); setHistory([]);
+    const { data, error } = await supabase.from("shipments")
+      .select("id, tracking_number, client_name, origin_country, destination_country, current_location, shipment_status, transport_mode, estimated_delivery, item_description, created_at, courier_name, weight_kg, package_count, package_type, declared_value, receiver_name, receiver_phone, receiver_address")
+      .eq("tracking_number", query).maybeSingle();
+    if (error) { setMessage("We could not retrieve tracking information. Please try again."); setLoading(false); return; }
+    if (!data) { setMessage("No shipment found with that tracking number."); setLoading(false); return; }
+    const typedShipment = data as Shipment;
+    const { data: historyData } = await supabase.from("shipment_history").select("id, status, location, note, created_at").eq("shipment_id", typedShipment.id).order("created_at", { ascending: false });
+    setShipment(typedShipment); setHistory((historyData ?? []) as ShipmentHistory[]); setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search).get("tracking")?.trim();
+    if (!query) return;
+    const timer = window.setTimeout(() => {
+      setTrackingNumber(query);
+      void loadShipment(query);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadShipment]);
+
   useEffect(() => {
     if (!shipmentId) return;
     const channel = supabase.channel(`customer-tracking-${shipmentId}`)
@@ -46,15 +68,8 @@ export default function TrackPage() {
     event.preventDefault();
     const query = trackingNumber.trim();
     if (!query) { setShipment(null); setHistory([]); setMessage("Please enter a tracking number to continue."); return; }
-    setLoading(true); setMessage(""); setShipment(null); setHistory([]);
-    const { data, error } = await supabase.from("shipments")
-      .select("id, tracking_number, client_name, origin_country, destination_country, current_location, shipment_status, transport_mode, estimated_delivery, item_description, created_at, courier_name, weight_kg, package_count, package_type, declared_value, receiver_name, receiver_phone, receiver_address")
-      .eq("tracking_number", query).maybeSingle();
-    if (error) { setMessage("We could not retrieve tracking information. Please try again."); setLoading(false); return; }
-    if (!data) { setMessage("No shipment found with that tracking number."); setLoading(false); return; }
-    const typedShipment = data as Shipment;
-    const { data: historyData } = await supabase.from("shipment_history").select("id, status, location, note, created_at").eq("shipment_id", typedShipment.id).order("created_at", { ascending: false });
-    setShipment(typedShipment); setHistory((historyData ?? []) as ShipmentHistory[]); setLoading(false);
+    window.history.replaceState(null, "", `/track?tracking=${encodeURIComponent(query)}`);
+    await loadShipment(query);
   }
 
   const latestUpdate = useMemo(() => [...history].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0], [history]);
