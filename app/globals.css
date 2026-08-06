@@ -45,6 +45,17 @@ body {
   to { stroke-dashoffset: -90; }
 }
 
+@keyframes hero-ken-burns {
+  from { transform: scale(1); }
+  to { transform: scale(1.045); }
+}
+
+.hero-slide {
+  animation: hero-ken-burns 8s ease-out both;
+  transition: opacity 1100ms ease-in-out;
+  will-change: opacity, transform;
+}
+
 .home-reveal {
   animation: home-reveal 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -97,6 +108,11 @@ body {
   .home-reveal-delay,
   .global-route {
     animation: none;
+  }
+
+  .hero-slide {
+    animation: none;
+    transition: none;
   }
 }
 

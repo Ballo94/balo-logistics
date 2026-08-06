@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
 
 type Shipment = {
@@ -21,6 +21,11 @@ type Shipment = {
   container_number?: string | null;
   next_checkpoint?: string | null;
 };
+
+const HERO_SLIDES = [
+  { src: "/balo-port-hero.webp", alt: "Container vessel arriving at the Port of Durban with cranes and terminal trucks", label: "African Port Operations", position: "62% center" },
+  { src: "/balo-hero-last-mile.webp", alt: "Black African courier handing a parcel to a business customer", label: "Last-Mile Delivery", position: "67% center" },
+] as const;
 
 export default function Home() {
   const [trackingNumber, setTrackingNumber] = useState("");
@@ -43,7 +48,7 @@ export default function Home() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f5f7fa] text-slate-950">
       <section className="relative isolate min-h-[54rem] overflow-hidden bg-[#1676b5] text-white sm:min-h-[56rem] lg:min-h-[52rem]">
-        <Image src="/balo-port-hero.webp" alt="Container vessel, cargo cranes, and aircraft at a global port in daylight" fill priority sizes="100vw" className="object-cover object-[62%_center]" />
+        <HeroSlideshow />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(5,43,82,.78)_0%,rgba(12,91,151,.5)_42%,rgba(67,155,211,.16)_72%,rgba(255,214,96,.06)_100%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,49,89,.3)_0%,transparent_35%,rgba(5,44,78,.38)_100%)]" />
         <WorldOverlay />
@@ -95,6 +100,41 @@ function ServiceCard({ title, text, icon }: { title: string; text: string; icon:
 function NavLink({ href, children, active = false }: { href: string; children: React.ReactNode; active?: boolean }) { return <Link href={href} className={`rounded-xl px-4 py-2.5 text-sm font-extrabold transition focus:outline-none focus:ring-2 focus:ring-[#f6c945] ${active ? "bg-[#f6c945]/15 text-yellow-300" : "text-white hover:bg-white/10"}`}>{children}</Link>; }
 function Brand() { return <Link href="/" className="flex items-center gap-3" aria-label="Balo Logistics home"><span className="relative grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-[#f6c945] text-xl font-black text-[#071a33] shadow-lg shadow-black/20">B<span aria-hidden="true" className="absolute -bottom-2 -right-2 h-7 w-9 -rotate-[28deg] rounded-full border-2 border-[#071a33]/35"/></span><span><strong className="block text-xl font-black tracking-tight">Balo Logistics</strong><span className="block text-[0.62rem] font-extrabold uppercase tracking-[0.18em] text-blue-200">Fast • Secure • Reliable</span></span></Link>; }
 function WorldOverlay() { return <svg aria-hidden="true" viewBox="0 0 1200 600" className="absolute inset-0 h-full w-full opacity-[0.13]"><g fill="none" stroke="#93c5fd" strokeWidth="1"><ellipse cx="600" cy="300" rx="430" ry="210"/><path d="M170 300h860M230 205h740M230 395h740M600 90c-130 110-130 310 0 420M600 90c130 110 130 310 0 420"/></g><g fill="#f6c945"><circle cx="280" cy="255" r="5"/><circle cx="510" cy="330" r="5"/><circle cx="780" cy="235" r="5"/><circle cx="920" cy="365" r="5"/></g><g fill="none" stroke="#f6c945" strokeDasharray="7 8"><path className="global-route" d="M280 255Q400 170 510 330T780 235T920 365"/></g></svg>; }
+
+function HeroSlideshow() {
+  const [requestedIndex, setRequestedIndex] = useState(0);
+  const [visibleIndex, setVisibleIndex] = useState(0);
+  const [previousIndex, setPreviousIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (reducedMotion.matches) return;
+    const timer = window.setInterval(() => { setPreviousIndex(visibleIndex); setRequestedIndex((visibleIndex + 1) % HERO_SLIDES.length); }, 6000);
+    return () => window.clearInterval(timer);
+  }, [visibleIndex]);
+
+  function show(index: number) {
+    if (index === visibleIndex) return;
+    setPreviousIndex(visibleIndex);
+    setRequestedIndex(index);
+  }
+
+  const requested = HERO_SLIDES[requestedIndex];
+  const previous = previousIndex === null ? null : HERO_SLIDES[previousIndex];
+
+  return <div className="absolute inset-0" aria-roledescription="carousel" aria-label="Balo Logistics operations">
+    {previous && previousIndex !== requestedIndex && <Image key={`previous-${previous.src}`} src={previous.src} alt="" fill sizes="100vw" className="hero-slide object-cover" style={{ objectPosition: previous.position }} aria-hidden="true" />}
+    <Image key={requested.src} src={requested.src} alt={requested.alt} fill priority={requestedIndex === 0} loading={requestedIndex === 0 ? "eager" : "lazy"} sizes="100vw" onLoad={() => { setVisibleIndex(requestedIndex); window.setTimeout(() => setPreviousIndex(null), 1200); }} className={`hero-slide object-cover ${visibleIndex === requestedIndex ? "opacity-100" : "opacity-0"}`} style={{ objectPosition: requested.position }} />
+    <div className="absolute bottom-28 right-4 z-20 flex flex-col items-end gap-3 sm:right-6 lg:bottom-24 lg:right-8">
+      <div className="rounded-full border border-white/20 bg-[#07558f]/55 px-3 py-1.5 text-[0.62rem] font-black uppercase tracking-[0.16em] text-white shadow-lg backdrop-blur-md">{HERO_SLIDES[visibleIndex].label}</div>
+      <div className="flex items-center gap-2 rounded-full border border-white/20 bg-[#07558f]/55 px-2 py-1.5 backdrop-blur-md" role="group" aria-label="Choose hero image">
+        <button type="button" onClick={() => show((visibleIndex - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)} className="hidden h-8 w-8 place-items-center rounded-full text-white transition hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-yellow-300 lg:grid" aria-label="Previous hero image"><ChevronIcon direction="left"/></button>
+        {HERO_SLIDES.map((slide, index) => <button key={slide.src} type="button" onClick={() => show(index)} className={`h-2.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-yellow-300 focus:ring-offset-2 focus:ring-offset-[#07558f] ${index === visibleIndex ? "w-7 bg-[#f6c945]" : "w-2.5 bg-white/60 hover:bg-white"}`} aria-label={`Show slide ${index + 1}: ${slide.label}`} aria-current={index === visibleIndex ? "true" : undefined}/>) }
+        <button type="button" onClick={() => show((visibleIndex + 1) % HERO_SLIDES.length)} className="hidden h-8 w-8 place-items-center rounded-full text-white transition hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-yellow-300 lg:grid" aria-label="Next hero image"><ChevronIcon direction="right"/></button>
+      </div>
+    </div>
+  </div>;
+}
 function SvgIcon({ children, className = "h-5 w-5" }: { children: React.ReactNode; className?: string }) { return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>; }
 function MenuIcon({ open }: { open: boolean }) { return <SvgIcon>{open ? <><path d="m6 6 12 12M18 6 6 18"/></> : <><path d="M4 7h16M4 12h16M4 17h16"/></>}</SvgIcon>; }
 function ArrowIcon() { return <SvgIcon className="h-4 w-4"><path d="m9 18 6-6-6-6"/></SvgIcon>; }
@@ -105,3 +145,4 @@ function SpinnerIcon() { return <SvgIcon className="h-5 w-5 animate-spin"><path 
 function PlaneIcon() { return <SvgIcon className="h-7 w-7"><path d="m2 16 20-8-6 7 5 3-19-1 5-2Z"/></SvgIcon>; }
 function ShipIcon() { return <SvgIcon className="h-7 w-7"><path d="M3 15h18l-3 5H7Z"/><path d="M7 15V8h10v7M10 8V4h4v4M3 21c2 1 4 1 6 0s4-1 6 0 4 1 6 0"/></SvgIcon>; }
 function TruckIcon() { return <SvgIcon className="h-7 w-7"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></SvgIcon>; }
+function ChevronIcon({ direction }: { direction: "left" | "right" }) { return <SvgIcon className="h-4 w-4"><path d={direction === "left" ? "m15 18-6-6 6-6" : "m9 18 6-6-6-6"}/></SvgIcon>; }
