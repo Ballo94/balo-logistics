@@ -1,7 +1,7 @@
 import { SHIPMENT_STAGES, shipmentStageIndex } from "./lib/shipment-status";
 
 type ShipmentHistory = { id: number; status: string; location: string | null; note: string | null; created_at: string };
-type ShipmentTimelineProps = { shipmentStatus: string | null; history: ShipmentHistory[] };
+type ShipmentTimelineProps = { shipmentStatus: string | null; history: ShipmentHistory[]; originCountry: string; destinationCountry: string; transportMode: string | null };
 
 function formatDateTime(value: string) {
   const date = new Date(value);
@@ -12,7 +12,7 @@ function formatDateTime(value: string) {
   };
 }
 
-export default function ShipmentTimeline({ shipmentStatus, history }: ShipmentTimelineProps) {
+export default function ShipmentTimeline({ shipmentStatus, history, originCountry, destinationCountry, transportMode }: ShipmentTimelineProps) {
   const chronological = [...history].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   const currentIndex = shipmentStageIndex(chronological.at(-1)?.status ?? shipmentStatus);
   const events = new Map<number, ShipmentHistory>();
@@ -31,16 +31,18 @@ export default function ShipmentTimeline({ shipmentStatus, history }: ShipmentTi
           const complete = index < currentIndex;
           const current = index === currentIndex;
           const timestamp = event ? formatDateTime(event.created_at) : null;
+          const location = splitLocation(event?.location, index < 4 ? originCountry : destinationCountry);
+          const title = timelineTitle(stage, transportMode);
           return <li key={stage} className="relative flex min-h-24 gap-4 last:min-h-0 sm:gap-5">
-            {index < SHIPMENT_STAGES.length - 1 && <span aria-hidden="true" className={`absolute left-6 top-12 h-[calc(100%-2rem)] w-1 -translate-x-1/2 rounded-full ${index < currentIndex ? "bg-emerald-500" : "bg-slate-200"}`} />}
+            {index < SHIPMENT_STAGES.length - 1 && <span aria-hidden="true" className={`absolute left-6 top-12 h-[calc(100%-2rem)] w-1 -translate-x-1/2 rounded-full ${index < currentIndex ? "bg-[#f6c945]" : "bg-slate-200"}`} />}
             {current && <span aria-hidden="true" className="track-map-pulse absolute left-0 top-0 h-12 w-12 rounded-full bg-blue-400"/>}
-            <span className={`relative z-10 grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 shadow-[0_0_0_6px] ${complete ? "border-emerald-600 bg-emerald-600 text-white shadow-emerald-100" : current ? "border-blue-600 bg-blue-600 text-white shadow-blue-100" : "border-slate-300 bg-white text-slate-400 shadow-slate-100"}`}>{complete ? <CheckIcon/> : <StageIcon index={index} />}</span>
+            <span className={`relative z-10 grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 shadow-[0_0_0_6px] ${complete ? "border-[#e4b72e] bg-[#f6c945] text-[#071a33] shadow-yellow-100" : current ? "border-blue-600 bg-blue-600 text-white shadow-blue-100" : "border-slate-300 bg-white text-slate-400 shadow-slate-100"}`}>{complete ? <CheckIcon/> : <StageIcon index={index} />}</span>
             <div className="min-w-0 flex-1 pb-8 pt-0.5">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                <div><h3 className={`text-base font-bold sm:text-lg ${current ? "text-blue-800" : complete ? "text-emerald-800" : "text-slate-500"}`}>{stage}</h3><span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-wider ${current ? "bg-blue-50 text-blue-700" : complete ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{current ? "Current checkpoint" : complete ? "Completed" : "Upcoming"}</span></div>
+                <div><h3 className={`text-base font-bold sm:text-lg ${current ? "text-blue-800" : complete ? "text-[#725600]" : "text-slate-500"}`}>{title}</h3><span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-wider ${current ? "bg-blue-50 text-blue-700" : complete ? "bg-yellow-50 text-[#725600]" : "bg-slate-100 text-slate-500"}`}>{current ? "Current checkpoint" : complete ? "Completed" : "Upcoming"}</span></div>
                 {event && timestamp && <time dateTime={event.created_at} className="shrink-0 text-left text-xs font-semibold text-slate-500 sm:text-right"><span className="block font-bold text-slate-700">{timestamp.date}</span><span className="mt-0.5 block">{timestamp.time}</span></time>}
               </div>
-              {event?.location && <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-700"><PinIcon />{event.location}</p>}
+              {event?.location && <div className="mt-2 flex items-start gap-2 text-sm"><PinIcon/><p><span className="block font-bold text-slate-700">{location.city}</span>{location.country && <span className="mt-0.5 block text-xs font-semibold text-slate-400">{location.country}</span>}</p></div>}
               <p className="mt-2 rounded-xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">{event?.note || (current ? "Your shipment is currently at this operational milestone." : complete ? "This shipment checkpoint has been completed." : "Updates will appear when the shipment reaches this checkpoint.")}</p>
             </div>
           </li>;
@@ -49,6 +51,19 @@ export default function ShipmentTimeline({ shipmentStatus, history }: ShipmentTi
       {!history.length && <p className="mt-7 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm leading-6 text-blue-800">Detailed tracking updates will appear here as the shipment moves. Milestones shown above reflect the current shipment status; no event dates have been inferred.</p>}
     </section>
   );
+}
+
+function timelineTitle(stage: string, transportMode: string | null) {
+  if (stage === "In Warehouse") return "Warehouse Processing";
+  if (stage === "In Transit") return transportMode?.toLowerCase().includes("sea") ? "Ocean Transit" : transportMode?.toLowerCase().includes("air") ? "In Air Transit" : "In Transit";
+  if (stage === "Customs Clearance") return "Customs Clearance";
+  return stage;
+}
+
+function splitLocation(value: string | null | undefined, fallbackCountry: string) {
+  if (!value) return { city: "", country: fallbackCountry };
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+  return { city: parts[0] || value, country: parts.length > 1 ? parts.at(-1) || fallbackCountry : fallbackCountry };
 }
 
 function IconBase({ children, className = "h-5 w-5" }: { children: React.ReactNode; className?: string }) { return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>{children}</svg>; }
