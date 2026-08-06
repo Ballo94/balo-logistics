@@ -106,7 +106,7 @@ export default function TrackPage() {
     }
 
     if (!data) {
-      setMessage("Shipment not found.");
+      setMessage("No shipment found with that tracking number.");
       setLoading(false);
       return;
     }
@@ -127,8 +127,8 @@ export default function TrackPage() {
     ? [
         ["Tracking Number", shipment.tracking_number],
         ["Client Name", shipment.client_name],
-        ["Origin", shipment.origin_country],
-        ["Destination", shipment.destination_country],
+        ["Origin Country", shipment.origin_country],
+        ["Destination Country", shipment.destination_country],
         ["Current Location", displayValue(shipment.current_location)],
         ["Transport Mode", displayValue(shipment.transport_mode)],
         ["Estimated Delivery", displayDate(shipment.estimated_delivery)],
@@ -206,7 +206,7 @@ export default function TrackPage() {
         </form>
 
         {message && (
-          <div role="status" className={`mt-6 rounded-xl border px-5 py-4 text-center font-semibold ${message === "Shipment not found." ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700"}`}>
+          <div role="status" className={`mt-6 rounded-xl border px-5 py-4 text-center font-semibold ${message === "No shipment found with that tracking number." ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700"}`}>
             {message}
           </div>
         )}
@@ -243,10 +243,12 @@ export default function TrackPage() {
                     </span>
                   </dd>
                 </div>
-                <div className="py-5">
-                  <dt className="text-[0.68rem] font-extrabold uppercase tracking-[0.12em] text-slate-400">Item Description</dt>
-                  <dd className="mt-2.5 leading-7 text-slate-700">{displayValue(shipment.item_description)}</dd>
-                </div>
+                {shipment.item_description?.trim() && (
+                  <div className="py-5">
+                    <dt className="text-[0.68rem] font-extrabold uppercase tracking-[0.12em] text-slate-400">Item Description</dt>
+                    <dd className="mt-2.5 leading-7 text-slate-700">{shipment.item_description}</dd>
+                  </div>
+                )}
               </dl>
             </section>
 

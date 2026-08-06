@@ -13,7 +13,7 @@ type ShipmentTimelineProps = {
 
 const stages = [
   { title: "Shipment Created", icon: PackageIcon },
-  { title: "Picked Up", icon: PickupIcon },
+  { title: "Collected", icon: PickupIcon },
   { title: "In Transit", icon: TransitIcon },
   { title: "Customs Clearance", icon: CustomsIcon },
   { title: "Out for Delivery", icon: DeliveryIcon },
