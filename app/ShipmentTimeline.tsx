@@ -19,13 +19,13 @@ export default function ShipmentTimeline({ shipmentStatus, history, originCountr
   chronological.forEach((event) => events.set(shipmentStageIndex(event.status), event));
 
   return (
-    <section className="rounded-[1.75rem] border border-slate-200/80 bg-white p-5 shadow-[0_22px_55px_-28px_rgba(15,23,42,0.32)] sm:p-8 lg:p-10" aria-labelledby="shipment-progress-title">
+    <section className="rounded-[1.5rem] border border-slate-200/80 bg-white p-5 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.32)] sm:p-6" aria-labelledby="shipment-progress-title">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="text-[0.68rem] font-extrabold uppercase tracking-[0.2em] text-blue-600">Live progress</p><h2 id="shipment-progress-title" className="mt-1 text-2xl font-extrabold tracking-[-0.02em]">Shipment Progress</h2></div>
-        <p className="text-sm font-bold text-slate-500">Milestone {currentIndex + 1} of {SHIPMENT_STAGES.length}</p>
+        <div><p className="text-[0.64rem] font-extrabold uppercase tracking-[0.18em] text-blue-600">Live progress</p><h2 id="shipment-progress-title" className="mt-1 text-xl font-extrabold tracking-[-0.02em] sm:text-2xl">Shipment Progress</h2></div>
+        <p className="text-xs font-bold text-slate-500">Milestone {currentIndex + 1} of {SHIPMENT_STAGES.length}</p>
       </div>
 
-      <ol className="mt-9" aria-label="Shipment progress timeline">
+      <ol className="mt-6" aria-label="Shipment progress timeline">
         {SHIPMENT_STAGES.map((stage, index) => {
           const event = events.get(index);
           const complete = index < currentIndex;
@@ -33,22 +33,22 @@ export default function ShipmentTimeline({ shipmentStatus, history, originCountr
           const timestamp = event ? formatDateTime(event.created_at) : null;
           const location = splitLocation(event?.location, index < 4 ? originCountry : destinationCountry);
           const title = timelineTitle(stage, transportMode);
-          return <li key={stage} className="relative flex min-h-24 gap-4 last:min-h-0 sm:gap-5">
-            {index < SHIPMENT_STAGES.length - 1 && <span aria-hidden="true" className={`absolute left-6 top-12 h-[calc(100%-2rem)] w-1 -translate-x-1/2 rounded-full ${index < currentIndex ? "bg-[#f6c945]" : "bg-slate-200"}`} />}
-            {current && <span aria-hidden="true" className="track-map-pulse absolute left-0 top-0 h-12 w-12 rounded-full bg-blue-400"/>}
-            <span className={`relative z-10 grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 shadow-[0_0_0_6px] ${complete ? "border-[#e4b72e] bg-[#f6c945] text-[#071a33] shadow-yellow-100" : current ? "border-blue-600 bg-blue-600 text-white shadow-blue-100" : "border-slate-300 bg-white text-slate-400 shadow-slate-100"}`}>{complete ? <CheckIcon/> : <StageIcon index={index} />}</span>
-            <div className="min-w-0 flex-1 pb-8 pt-0.5">
+          return <li key={stage} className="relative flex min-h-20 gap-3.5 last:min-h-0 sm:gap-4">
+            {index < SHIPMENT_STAGES.length - 1 && <span aria-hidden="true" className={`absolute left-5 top-10 h-[calc(100%-1.5rem)] w-1 -translate-x-1/2 rounded-full ${index < currentIndex ? "bg-[#f6c945]" : "bg-slate-200"}`} />}
+            {current && <span aria-hidden="true" className="track-map-pulse absolute left-0 top-0 h-10 w-10 rounded-full bg-blue-400"/>}
+            <span className={`relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 shadow-[0_0_0_5px] ${complete ? "border-[#e4b72e] bg-[#f6c945] text-[#071a33] shadow-yellow-100" : current ? "border-blue-600 bg-blue-600 text-white shadow-blue-100" : "border-slate-300 bg-white text-slate-400 shadow-slate-100"}`}>{complete ? <CheckIcon/> : <StageIcon index={index} />}</span>
+            <div className="min-w-0 flex-1 pb-5 pt-0.5">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                <div><h3 className={`text-base font-bold sm:text-lg ${current ? "text-blue-800" : complete ? "text-[#725600]" : "text-slate-500"}`}>{title}</h3><span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-wider ${current ? "bg-blue-50 text-blue-700" : complete ? "bg-yellow-50 text-[#725600]" : "bg-slate-100 text-slate-500"}`}>{current ? "Current checkpoint" : complete ? "Completed" : "Upcoming"}</span></div>
+                <div><h3 className={`text-sm font-bold sm:text-base ${current ? "text-blue-800" : complete ? "text-[#725600]" : "text-slate-500"}`}>{title}</h3><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider ${current ? "bg-blue-50 text-blue-700" : complete ? "bg-yellow-50 text-[#725600]" : "bg-slate-100 text-slate-500"}`}>{current ? "Current checkpoint" : complete ? "Completed" : "Upcoming"}</span></div>
                 {event && timestamp && <time dateTime={event.created_at} className="shrink-0 text-left text-xs font-semibold text-slate-500 sm:text-right"><span className="block font-bold text-slate-700">{timestamp.date}</span><span className="mt-0.5 block">{timestamp.time}</span></time>}
               </div>
               {event?.location && <div className="mt-2 flex items-start gap-2 text-sm"><PinIcon/><p><span className="block font-bold text-slate-700">{location.city}</span>{location.country && <span className="mt-0.5 block text-xs font-semibold text-slate-400">{location.country}</span>}</p></div>}
-              <p className="mt-2 rounded-xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">{event?.note || (current ? "Your shipment is currently at this operational milestone." : complete ? "This shipment checkpoint has been completed." : "Updates will appear when the shipment reaches this checkpoint.")}</p>
+              <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600 shadow-sm">{event?.note || (current ? "Your shipment is currently at this operational milestone." : complete ? "This shipment checkpoint has been completed." : "Updates will appear when the shipment reaches this checkpoint.")}</p>
             </div>
           </li>;
         })}
       </ol>
-      {!history.length && <p className="mt-7 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm leading-6 text-blue-800">Detailed tracking updates will appear here as the shipment moves. Milestones shown above reflect the current shipment status; no event dates have been inferred.</p>}
+      {!history.length && <p className="mt-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">Detailed tracking updates will appear here as the shipment moves. Milestones shown above reflect the current shipment status; no event dates have been inferred.</p>}
     </section>
   );
 }
