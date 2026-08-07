@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { sendAutomaticNotification } from "../lib/notifications";
+import { ShipmentEditor, TRANSPORT_OPTIONS, type ShipmentEditForm, type ShipmentEditorRecord } from "./ShipmentEditor";
 
 const STATUS_OPTIONS = [
   "Shipment Created",
@@ -20,48 +21,7 @@ const STATUS_OPTIONS = [
 const FILTERS = ["All", "Air", "Sea", "Delivered", "Out for Delivery", "Delayed"] as const;
 type Filter = (typeof FILTERS)[number];
 
-type Shipment = {
-  id: number;
-  tracking_number: string;
-  client_name: string;
-  client_email: string | null;
-  origin_country: string;
-  destination_country: string;
-  current_location: string | null;
-  courier_name: string | null;
-  item_description: string | null;
-  estimated_delivery: string | null;
-  weight_kg: number | null;
-  package_count: number | null;
-  package_type: string | null;
-  declared_value: number | null;
-  transport_mode: string | null;
-  receiver_name: string | null;
-  receiver_phone: string | null;
-  receiver_email: string | null;
-  receiver_address: string | null;
-  shipment_status: string | null;
-  created_at: string;
-};
-
-type EditForm = {
-  tracking_number: string;
-  client_name: string;
-  client_email: string;
-  origin_country: string;
-  destination_country: string;
-  current_location: string;
-  courier_name: string;
-  item_description: string;
-  estimated_delivery: string;
-  transport_mode: string;
-  receiver_name: string;
-  receiver_phone: string;
-  receiver_email: string;
-  receiver_address: string;
-  shipment_status: string;
-  update_note: string;
-};
+type Shipment = ShipmentEditorRecord;
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").toLowerCase().trim();
@@ -84,7 +44,7 @@ function statusStyle(status: string | null) {
   return "bg-amber-50 text-amber-700 ring-amber-600/20";
 }
 
-function shipmentToForm(shipment: Shipment): EditForm {
+function shipmentToForm(shipment: Shipment): ShipmentEditForm {
   return {
     tracking_number: shipment.tracking_number,
     client_name: shipment.client_name,
@@ -102,7 +62,29 @@ function shipmentToForm(shipment: Shipment): EditForm {
     receiver_address: shipment.receiver_address ?? "",
     shipment_status: shipment.shipment_status ?? "Shipment Created",
     update_note: "",
+    weight_kg: shipment.weight_kg?.toString() ?? "",
+    package_count: shipment.package_count?.toString() ?? "",
+    package_type: shipment.package_type ?? "",
+    declared_value: shipment.declared_value?.toString() ?? "",
   };
+}
+
+function validEmail(value: string) { return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
+
+function validateEditForm(form: ShipmentEditForm) {
+  const errors: Record<string, string> = {};
+  if (!form.client_name.trim()) errors.client_name = "Sender name is required.";
+  if (!form.origin_country.trim()) errors.origin_country = "Origin is required.";
+  if (!form.destination_country.trim()) errors.destination_country = "Destination is required.";
+  if (!form.shipment_status.trim()) errors.shipment_status = "Select a shipment status.";
+  if (!TRANSPORT_OPTIONS.includes(form.transport_mode as (typeof TRANSPORT_OPTIONS)[number])) errors.transport_mode = "Select a valid transport mode.";
+  if (form.estimated_delivery && Number.isNaN(new Date(`${form.estimated_delivery}T00:00:00`).getTime())) errors.estimated_delivery = "Enter a valid estimated delivery date.";
+  if (!validEmail(form.client_email)) errors.client_email = "Enter a valid sender email address.";
+  if (!validEmail(form.receiver_email)) errors.receiver_email = "Enter a valid receiver email address.";
+  if (form.weight_kg && (Number.isNaN(Number(form.weight_kg)) || Number(form.weight_kg) < 0)) errors.weight_kg = "Weight must be zero or greater.";
+  if (form.package_count && (!Number.isInteger(Number(form.package_count)) || Number(form.package_count) < 0)) errors.package_count = "Quantity must be a whole number of zero or greater.";
+  if (form.declared_value && (Number.isNaN(Number(form.declared_value)) || Number(form.declared_value) < 0)) errors.declared_value = "Declared value must be zero or greater.";
+  return errors;
 }
 
 export default function ManagePage() {
@@ -113,7 +95,9 @@ export default function ManagePage() {
   const [filter, setFilter] = useState<Filter>("All");
   const [viewing, setViewing] = useState<Shipment | null>(null);
   const [editing, setEditing] = useState<Shipment | null>(null);
-  const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [editForm, setEditForm] = useState<ShipmentEditForm | null>(null);
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [editSuccess, setEditSuccess] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -151,14 +135,36 @@ export default function ManagePage() {
   function openEdit(shipment: Shipment) {
     setEditing(shipment);
     setEditForm(shipmentToForm(shipment));
+    setEditErrors({});
+    setEditSuccess("");
+  }
+
+  function closeEdit() {
+    setEditing(null);
+    setEditForm(null);
+    setEditErrors({});
+    setEditSuccess("");
+  }
+
+  function updateEditField(field: keyof ShipmentEditForm, value: string) {
+    setEditForm((current) => current ? { ...current, [field]: value } : current);
+    setEditErrors((current) => current[field] ? { ...current, [field]: "" } : current);
+    setEditSuccess("");
   }
 
   async function saveEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editing || !editForm) return;
+    const validationErrors = validateEditForm(editForm);
+    if (Object.keys(validationErrors).length) {
+      setEditErrors(validationErrors);
+      setEditSuccess("");
+      return;
+    }
     setSaving(true);
+    setEditErrors({});
+    setEditSuccess("");
     const payload = {
-      tracking_number: editForm.tracking_number.trim(),
       client_name: editForm.client_name.trim(),
       client_email: editForm.client_email.trim() || null,
       origin_country: editForm.origin_country.trim(),
@@ -173,14 +179,21 @@ export default function ManagePage() {
       receiver_email: editForm.receiver_email.trim() || null,
       receiver_address: editForm.receiver_address.trim() || null,
       shipment_status: editForm.shipment_status,
+      weight_kg: editForm.weight_kg === "" ? null : Number(editForm.weight_kg),
+      package_count: editForm.package_count === "" ? null : Number(editForm.package_count),
+      package_type: editForm.package_type.trim() || null,
+      declared_value: editForm.declared_value === "" ? null : Number(editForm.declared_value),
     };
-    const { error: updateError } = await supabase.from("shipments").update(payload).eq("id", editing.id);
+    const { data: updatedData, error: updateError } = await supabase.from("shipments").update(payload).eq("id", editing.id).select("*").single();
     if (updateError) {
-      setError(updateError.message);
+      setEditErrors({ form: updateError.message });
       setSaving(false);
       return;
     }
-    if (editing.shipment_status !== editForm.shipment_status) {
+    const statusChanged = normalize(editing.shipment_status) !== normalize(editForm.shipment_status);
+    const locationChanged = normalize(editing.current_location) !== normalize(editForm.current_location);
+    const hasOperationalNote = Boolean(editForm.update_note.trim());
+    if (statusChanged || locationChanged || hasOperationalNote) {
       const { error: historyError } = await supabase.from("shipment_history").insert([{
         shipment_id: editing.id,
         status: editForm.shipment_status,
@@ -189,17 +202,21 @@ export default function ManagePage() {
         created_at: new Date().toISOString(),
       }]);
       if (historyError) {
-        setError(`Shipment updated, but history could not be saved: ${historyError.message}`);
+        setEditErrors({ form: `Shipment updated, but history could not be saved: ${historyError.message}` });
         setSaving(false);
         return;
       }
+    }
+    if (statusChanged) {
       const eventType = normalize(editForm.shipment_status) === "delivered" ? "delivered" : "status_changed";
       void sendAutomaticNotification(editing.id, eventType);
     }
-    setSaving(false);
-    setEditing(null);
-    setEditForm(null);
     await loadShipments();
+    const refreshed = updatedData as Shipment;
+    setEditing(refreshed);
+    setEditForm({ ...shipmentToForm(refreshed), update_note: "" });
+    setEditSuccess("Shipment saved successfully. The shipment list and customer-facing derived state are now refreshed.");
+    setSaving(false);
   }
 
   async function deleteShipment(shipment: Shipment) {
@@ -296,40 +313,7 @@ export default function ManagePage() {
         </div>
       </Modal>}
 
-      {editing && editForm && <Modal title="Edit Shipment" subtitle={editing.tracking_number} onClose={() => { setEditing(null); setEditForm(null); }}>
-        <form onSubmit={saveEdit}>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Tracking Number" value={editForm.tracking_number} onChange={(value) => setEditForm({ ...editForm, tracking_number: value })} required />
-            <Field label="Client Name" value={editForm.client_name} onChange={(value) => setEditForm({ ...editForm, client_name: value })} required />
-            <Field label="Client Email" type="email" value={editForm.client_email} onChange={(value) => setEditForm({ ...editForm, client_email: value })} />
-            <Field label="Origin" value={editForm.origin_country} onChange={(value) => setEditForm({ ...editForm, origin_country: value })} required />
-            <Field label="Destination" value={editForm.destination_country} onChange={(value) => setEditForm({ ...editForm, destination_country: value })} required />
-            <Field label="Courier" value={editForm.courier_name} onChange={(value) => setEditForm({ ...editForm, courier_name: value })} />
-            <SelectField label="Transport Mode" value={editForm.transport_mode} options={["Air", "Sea", "Road", "Rail"]} onChange={(value) => setEditForm({ ...editForm, transport_mode: value })} />
-            <Field label="Estimated Delivery" type="date" value={editForm.estimated_delivery} onChange={(value) => setEditForm({ ...editForm, estimated_delivery: value })} />
-            <Field label="Receiver Name" value={editForm.receiver_name} onChange={(value) => setEditForm({ ...editForm, receiver_name: value })} />
-            <Field label="Receiver Phone" value={editForm.receiver_phone} onChange={(value) => setEditForm({ ...editForm, receiver_phone: value })} />
-            <Field label="Receiver Email" type="email" value={editForm.receiver_email} onChange={(value) => setEditForm({ ...editForm, receiver_email: value })} />
-            <Field label="Receiver Address" value={editForm.receiver_address} onChange={(value) => setEditForm({ ...editForm, receiver_address: value })} />
-            <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-semibold text-gray-700">Item Description</span><textarea rows={3} value={editForm.item_description} onChange={(event) => setEditForm({ ...editForm, item_description: event.target.value })} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" /></label>
-            <div className="sm:col-span-2 mt-2 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:p-5">
-              <div className="mb-4">
-                <h3 className="font-bold text-gray-900">Status Update</h3>
-                <p className="mt-1 text-sm text-gray-600">When the status changes, these details will appear on the customer tracking timeline.</p>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <SelectField label="Shipment Status" value={editForm.shipment_status} options={STATUS_OPTIONS} onChange={(value) => setEditForm({ ...editForm, shipment_status: value })} />
-                <Field label="Current Location" value={editForm.current_location} onChange={(value) => setEditForm({ ...editForm, current_location: value })} />
-                <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-semibold text-gray-700">Update Note</span><textarea rows={3} value={editForm.update_note} onChange={(event) => setEditForm({ ...editForm, update_note: event.target.value })} placeholder="Add a customer-facing shipment update..." className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 outline-none placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" /></label>
-              </div>
-            </div>
-          </div>
-          <div className="mt-6 flex justify-end gap-3 border-t border-gray-100 pt-5">
-            <button type="button" onClick={() => { setEditing(null); setEditForm(null); }} className="rounded-xl border border-gray-200 px-5 py-2.5 font-semibold hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={saving} className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{saving ? "Saving..." : "Save Changes"}</button>
-          </div>
-        </form>
-      </Modal>}
+      {editing && editForm && <ShipmentEditor shipment={editing} form={editForm} statusOptions={STATUS_OPTIONS} errors={editErrors} saving={saving} success={editSuccess} onChange={updateEditField} onSubmit={saveEdit} onClose={closeEdit} />}
     </main>
   );
 }
@@ -353,12 +337,4 @@ function Modal({ title, subtitle, onClose, children }: { title: string; subtitle
 
 function Detail({ label, value }: { label: string; value: string | null | undefined }) {
   return <div><dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</dt><dd className="mt-1.5 font-medium text-gray-800">{value || "—"}</dd></div>;
-}
-
-function Field({ label, value, onChange, required = false, type = "text" }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: string }) {
-  return <label><span className="mb-1.5 block text-sm font-semibold text-gray-700">{label}</span><input type={type} value={value} required={required} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" /></label>;
-}
-
-function SelectField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
-  return <label><span className="mb-1.5 block text-sm font-semibold text-gray-700">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
 }
