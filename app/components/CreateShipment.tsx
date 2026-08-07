@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { sendAutomaticNotification } from "../lib/notifications";
+import { createTrackingEvent } from "../lib/tracking-events";
 
 const emptyForm = {
   tracking_number: "",
@@ -70,10 +71,25 @@ export default function CreateShipment() {
       .select("id")
       .single();
 
-    setSaving(false);
-
     if (error) {
+      setSaving(false);
       alert(`Unable to save shipment: ${error.message}`);
+      return;
+    }
+
+    const { error: eventError } = await createTrackingEvent({
+      shipmentId: data.id,
+      trackingNumber: shipmentData.tracking_number,
+      status: "Shipment Created",
+      transportMode: shipmentData.transport_mode,
+      currentLocation: shipmentData.current_location,
+      originCountry: shipmentData.origin_country,
+      destinationCountry: shipmentData.destination_country,
+      estimatedDelivery: shipmentData.estimated_delivery,
+    });
+    setSaving(false);
+    if (eventError) {
+      alert(`Shipment saved, but its initial tracking event could not be created: ${eventError.message}`);
       return;
     }
 

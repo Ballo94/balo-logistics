@@ -132,7 +132,7 @@ export function ShipmentEditor({ shipment, form, statusOptions, errors, saving, 
             <EditorSection number="05" title="Operations" description="Customer-visible operational updates are recorded in shipment history.">
               <InputField label="Estimated Delivery" type="date" value={form.estimated_delivery} error={errors.estimated_delivery} onChange={(value) => onChange("estimated_delivery", value)} />
               <ReadOnlyField label="Internal Notes" value="Not supported by current shipment data" muted />
-              <div className="sm:col-span-2"><TextAreaField label="Last Update Note" value={form.update_note} onChange={(value) => onChange("update_note", value)} rows={3} placeholder="Optional customer-facing operational note" hint="Saving a note, location change, or status change creates a genuine timestamped history entry." /></div>
+              <div className="sm:col-span-2"><TextAreaField label="Last Update Note" value={form.update_note} onChange={(value) => onChange("update_note", value)} rows={3} placeholder="Optional customer-facing operational note" hint="When the status changes, this note overrides the automatic event description." /></div>
             </EditorSection>
           </div>
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { sendAutomaticNotification } from "../lib/notifications";
+import { createTrackingEvent } from "../lib/tracking-events";
 import { ShipmentEditor, TRANSPORT_OPTIONS, type ShipmentEditForm, type ShipmentEditorRecord } from "./ShipmentEditor";
 
 const STATUS_OPTIONS = [
@@ -191,23 +192,24 @@ export default function ManagePage() {
       return;
     }
     const statusChanged = normalize(editing.shipment_status) !== normalize(editForm.shipment_status);
-    const locationChanged = normalize(editing.current_location) !== normalize(editForm.current_location);
-    const hasOperationalNote = Boolean(editForm.update_note.trim());
-    if (statusChanged || locationChanged || hasOperationalNote) {
-      const { error: historyError } = await supabase.from("shipment_history").insert([{
-        shipment_id: editing.id,
+    if (statusChanged) {
+      const { error: historyError } = await createTrackingEvent({
+        shipmentId: editing.id,
+        trackingNumber: editing.tracking_number,
         status: editForm.shipment_status,
-        location: editForm.current_location.trim() || null,
-        note: editForm.update_note.trim() || null,
-        created_at: new Date().toISOString(),
-      }]);
+        transportMode: editForm.transport_mode,
+        currentLocation: editForm.current_location.trim() || null,
+        originCountry: editForm.origin_country,
+        destinationCountry: editForm.destination_country,
+        receiverAddress: editForm.receiver_address.trim() || null,
+        estimatedDelivery: editForm.estimated_delivery || null,
+        customNote: editForm.update_note.trim() || null,
+      });
       if (historyError) {
         setEditErrors({ form: `Shipment updated, but history could not be saved: ${historyError.message}` });
         setSaving(false);
         return;
       }
-    }
-    if (statusChanged) {
       const eventType = normalize(editForm.shipment_status) === "delivered" ? "delivered" : "status_changed";
       void sendAutomaticNotification(editing.id, eventType);
     }
