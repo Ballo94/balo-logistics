@@ -1,0 +1,14 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { NOTIFICATION_CATEGORIES, NOTIFICATION_CHANNELS } from "../lib/notification-types";
+import { supabase } from "../lib/supabase";
+
+export default function NotificationPreferences() {
+  const [channels, setChannels] = useState<string[]>(["email"]); const [categories, setCategories] = useState<string[]>([...NOTIFICATION_CATEGORIES]); const [saved, setSaved] = useState("");
+  useEffect(() => { void supabase.from("customer_profiles").select("notification_channels,notification_categories").single().then(({ data }) => { if (data) { setChannels(data.notification_channels ?? ["email"]); setCategories(data.notification_categories ?? [...NOTIFICATION_CATEGORIES]); } }); }, []);
+  function toggle(value: string, current: string[], setter: (value: string[]) => void) { setter(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]); setSaved(""); }
+  async function save() { const { error } = await supabase.from("customer_profiles").update({ notification_channels: channels, notification_categories: categories, updated_at: new Date().toISOString() }); setSaved(error ? error.message : "Notification preferences saved."); }
+  return <section className="mt-4 rounded-[1.35rem] border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[0.6rem] font-black uppercase tracking-wider text-blue-600">Preferences</p><h2 className="text-lg font-black">How you receive updates</h2><p className="mt-1 text-xs text-slate-500">Email is active now. SMS, WhatsApp, and push are ready for future provider connections.</p><div className="mt-4 grid gap-4 sm:grid-cols-2"><ChoiceGroup label="Channels" options={NOTIFICATION_CHANNELS} selected={channels} onToggle={(value) => toggle(value, channels, setChannels)}/><ChoiceGroup label="Update categories" options={NOTIFICATION_CATEGORIES} selected={categories} onToggle={(value) => toggle(value, categories, setCategories)}/></div><div className="mt-4 flex items-center gap-3"><button onClick={() => void save()} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white">Save preferences</button>{saved && <span className="text-xs font-bold text-slate-600">{saved}</span>}</div></section>;
+}
+function ChoiceGroup({ label, options, selected, onToggle }: { label: string; options: readonly string[]; selected: string[]; onToggle: (value: string) => void }) { return <fieldset><legend className="mb-2 text-xs font-black text-slate-700">{label}</legend><div className="flex flex-wrap gap-1.5">{options.map((option) => <label key={option} className={`cursor-pointer rounded-full px-2.5 py-1.5 text-[0.65rem] font-bold ring-1 ${selected.includes(option) ? "bg-blue-600 text-white ring-blue-600" : "bg-slate-50 text-slate-600 ring-slate-200"}`}><input type="checkbox" checked={selected.includes(option)} onChange={() => onToggle(option)} className="sr-only"/>{option}</label>)}</div></fieldset>; }

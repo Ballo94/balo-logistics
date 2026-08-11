@@ -87,8 +87,8 @@ export default function NotificationCenter({ shipments }: { shipments: Notificat
       recipient: phone,
       subject: template.heading,
       message: template.whatsapp,
-      status: "Sent",
-      sent_at: new Date().toISOString(),
+      status: "Pending",
+      sent_at: null,
     });
     if (historyError) {
       setError(historyError.message);

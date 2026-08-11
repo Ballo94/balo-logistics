@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { buildNotificationTemplate, NotificationEvent, NotificationShipment } from "../../../lib/notification-templates";
+import { sendWithProvider } from "../../../lib/notification-providers";
 
 type NotificationRecord = {
   id: string;
@@ -10,6 +11,11 @@ type NotificationRecord = {
   event_type: NotificationEvent;
   recipient: string | null;
   attempts: number;
+  channel?: "email" | "sms" | "whatsapp" | "push";
+  subject?: string | null;
+  message?: string;
+  html_message?: string | null;
+  status?: string;
 };
 
 export async function POST(request: Request) {
@@ -22,13 +28,14 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json() as { shipmentId?: number; eventType?: NotificationEvent; retryId?: string };
+  const body = await request.json() as { shipmentId?: number; eventType?: NotificationEvent; retryId?: string; notificationId?: string };
   let notification: NotificationRecord | null = null;
   let shipmentId = body.shipmentId;
   let eventType = body.eventType;
 
-  if (body.retryId) {
-    const { data, error } = await supabase.from("notification_history").select("id, shipment_id, event_type, recipient, attempts").eq("id", body.retryId).single();
+  if (body.retryId || body.notificationId) {
+    const id = body.retryId || body.notificationId;
+    const { data, error } = await supabase.from("notification_history").select("id, shipment_id, event_type, recipient, attempts, channel, subject, message, html_message, status").eq("id", id).single();
     if (error || !data) return NextResponse.json({ error: error?.message ?? "Notification not found" }, { status: 404 });
     notification = data as NotificationRecord;
     shipmentId = notification.shipment_id;
@@ -43,7 +50,8 @@ export async function POST(request: Request) {
   const recipient = notification?.recipient || shipment.receiver_email || shipment.client_email || null;
 
   if (notification) {
-    await supabase.from("notification_history").update({ status: "Pending", error_message: null, attempts: notification.attempts + 1 }).eq("id", notification.id);
+    if (["Sent", "Delivered"].includes(notification.status ?? "") && !body.retryId) return NextResponse.json({ error: "This notification has already been sent." }, { status: 409 });
+    await supabase.from("notification_history").update({ status: "Processing", error_message: null, attempts: notification.attempts + 1, updated_at: new Date().toISOString() }).eq("id", notification.id);
   } else {
     const { data, error } = await supabase.from("notification_history").insert({ shipment_id: shipmentId, channel: "email", event_type: eventType, recipient, subject: template.subject, message: template.text, status: "Pending" }).select("id, shipment_id, event_type, recipient, attempts").single();
     if (error || !data) return NextResponse.json({ error: error?.message ?? "Unable to create notification" }, { status: 500 });
@@ -51,26 +59,13 @@ export async function POST(request: Request) {
   }
 
   if (!recipient) return fail(supabase, notification.id, "No customer or receiver email is available.");
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.BALO_NOTIFICATION_FROM_EMAIL;
-  if (!apiKey || !from) return fail(supabase, notification.id, "Email provider is not configured.");
-
-  try {
-    const providerResponse = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [recipient], subject: template.subject, html: template.html, text: template.text }),
-    });
-    const providerData = await providerResponse.json() as { id?: string; message?: string };
-    if (!providerResponse.ok) return fail(supabase, notification.id, providerData.message || "Email provider rejected the message.");
-    await supabase.from("notification_history").update({ status: "Sent", provider_id: providerData.id ?? null, sent_at: new Date().toISOString(), error_message: null }).eq("id", notification.id);
-    return NextResponse.json({ status: "Sent", id: notification.id });
-  } catch (error) {
-    return fail(supabase, notification.id, error instanceof Error ? error.message : "Email delivery failed.");
-  }
+  const result = await sendWithProvider({ channel: notification.channel ?? "email", recipient, subject: notification.subject || template.subject, text: notification.message || template.text, html: notification.html_message || template.html });
+  const now = new Date().toISOString();
+  await supabase.from("notification_history").update({ status: result.status, provider_id: result.providerId ?? null, sent_at: result.status === "Sent" ? now : null, error_message: result.error ?? null, updated_at: now }).eq("id", notification.id);
+  return NextResponse.json({ status: result.status, error: result.error, id: notification.id }, { status: result.status === "Failed" ? 502 : 200 });
 }
 
 async function fail(supabase: ReturnType<typeof createServerClient>, id: string, message: string) {
-  await supabase.from("notification_history").update({ status: "Failed", error_message: message }).eq("id", id);
+  await supabase.from("notification_history").update({ status: "Failed", error_message: message, updated_at: new Date().toISOString() }).eq("id", id);
   return NextResponse.json({ status: "Failed", error: message, id });
 }

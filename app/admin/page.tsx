@@ -212,6 +212,9 @@ export default function AdminPage() {
           </div>
           <nav className="flex flex-wrap gap-2 text-sm font-bold">
             <Link href="/manage" className="rounded-xl bg-blue-600 px-4 py-2.5 hover:bg-blue-500">Manage Shipments</Link>
+            <Link href="/admin/routes" className="rounded-xl bg-white/10 px-4 py-2.5 hover:bg-white/15">Route Library</Link>
+            <Link href="/admin/locations" className="rounded-xl bg-white/10 px-4 py-2.5 hover:bg-white/15">Locations</Link>
+            <Link href="/admin/locations/import" className="rounded-xl bg-white/10 px-4 py-2.5 hover:bg-white/15">Import Data</Link>
             <Link href="/track" className="rounded-xl bg-white/10 px-4 py-2.5 hover:bg-white/15">Customer Tracking</Link>
             <Link href="/settings" className="rounded-xl bg-white/10 px-4 py-2.5 hover:bg-white/15">Settings</Link>
             <Link href="/admin/profile" className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 hover:bg-white/15"><span className="grid h-6 w-6 place-items-center rounded-full bg-blue-500 text-[0.65rem] font-black">{adminName.charAt(0).toUpperCase()}</span>{adminName}</Link>

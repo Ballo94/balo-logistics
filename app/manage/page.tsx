@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { sendAutomaticNotification } from "../lib/notifications";
 import { createTrackingEvent } from "../lib/tracking-events";
 import { ShipmentEditor, TRANSPORT_OPTIONS, type ShipmentEditForm, type ShipmentEditorRecord } from "./ShipmentEditor";
+import { automateShipmentOperations, getStatusTransitionWarning } from "../lib/operations-automation";
 
 const STATUS_OPTIONS = [
   "Shipment Created",
@@ -24,6 +24,14 @@ type Filter = (typeof FILTERS)[number];
 
 type Shipment = ShipmentEditorRecord;
 
+type ShipmentHistoryEntry = {
+  id: number;
+  status: string;
+  location: string | null;
+  note: string | null;
+  created_at: string;
+};
+
 function normalize(value: string | null | undefined) {
   return (value ?? "").toLowerCase().trim();
 }
@@ -34,6 +42,13 @@ function displayDate(value: string | null) {
   return Number.isNaN(date.getTime())
     ? value
     : new Intl.DateTimeFormat("en", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+}
+
+function displayDateTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function statusStyle(status: string | null) {
@@ -67,10 +82,9 @@ function shipmentToForm(shipment: Shipment): ShipmentEditForm {
     package_count: shipment.package_count?.toString() ?? "",
     package_type: shipment.package_type ?? "",
     declared_value: shipment.declared_value?.toString() ?? "",
+    route_template_id: shipment.route_template_id ?? "",
   };
 }
-
-function validEmail(value: string) { return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
 
 function validateEditForm(form: ShipmentEditForm) {
   const errors: Record<string, string> = {};
@@ -80,12 +94,14 @@ function validateEditForm(form: ShipmentEditForm) {
   if (!form.shipment_status.trim()) errors.shipment_status = "Select a shipment status.";
   if (!TRANSPORT_OPTIONS.includes(form.transport_mode as (typeof TRANSPORT_OPTIONS)[number])) errors.transport_mode = "Select a valid transport mode.";
   if (form.estimated_delivery && Number.isNaN(new Date(`${form.estimated_delivery}T00:00:00`).getTime())) errors.estimated_delivery = "Enter a valid estimated delivery date.";
-  if (!validEmail(form.client_email)) errors.client_email = "Enter a valid sender email address.";
-  if (!validEmail(form.receiver_email)) errors.receiver_email = "Enter a valid receiver email address.";
   if (form.weight_kg && (Number.isNaN(Number(form.weight_kg)) || Number(form.weight_kg) < 0)) errors.weight_kg = "Weight must be zero or greater.";
   if (form.package_count && (!Number.isInteger(Number(form.package_count)) || Number(form.package_count) < 0)) errors.package_count = "Quantity must be a whole number of zero or greater.";
   if (form.declared_value && (Number.isNaN(Number(form.declared_value)) || Number(form.declared_value) < 0)) errors.declared_value = "Declared value must be zero or greater.";
   return errors;
+}
+
+function automateForm(form: ShipmentEditForm) {
+  return automateShipmentOperations({ shipmentStatus: form.shipment_status, transportMode: form.transport_mode, origin: form.origin_country, destination: form.destination_country, journey: null, receiverAddress: form.receiver_address, estimatedDelivery: form.estimated_delivery, operationalNote: form.update_note });
 }
 
 export default function ManagePage() {
@@ -95,6 +111,9 @@ export default function ManagePage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
   const [viewing, setViewing] = useState<Shipment | null>(null);
+  const [viewHistory, setViewHistory] = useState<ShipmentHistoryEntry[]>([]);
+  const [viewHistoryLoading, setViewHistoryLoading] = useState(false);
+  const [viewHistoryError, setViewHistoryError] = useState("");
   const [editing, setEditing] = useState<Shipment | null>(null);
   const [editForm, setEditForm] = useState<ShipmentEditForm | null>(null);
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
@@ -140,6 +159,21 @@ export default function ManagePage() {
     setEditSuccess("");
   }
 
+  async function openView(shipment: Shipment) {
+    setViewing(shipment);
+    setViewHistory([]);
+    setViewHistoryError("");
+    setViewHistoryLoading(true);
+    const { data, error: historyError } = await supabase
+      .from("shipment_history")
+      .select("id, status, location, note, created_at")
+      .eq("shipment_id", shipment.id)
+      .order("created_at", { ascending: true });
+    if (historyError) setViewHistoryError(historyError.message);
+    else setViewHistory((data ?? []) as ShipmentHistoryEntry[]);
+    setViewHistoryLoading(false);
+  }
+
   function closeEdit() {
     setEditing(null);
     setEditForm(null);
@@ -148,6 +182,12 @@ export default function ManagePage() {
   }
 
   function updateEditField(field: keyof ShipmentEditForm, value: string) {
+    if (field === "shipment_status" && editForm && editing) {
+      const current = automateShipmentOperations({ shipmentStatus: editing.shipment_status, transportMode: editForm.transport_mode, origin: editForm.origin_country, destination: editForm.destination_country, journey: null, receiverAddress: editForm.receiver_address, estimatedDelivery: editForm.estimated_delivery });
+      const target = automateShipmentOperations({ shipmentStatus: value, transportMode: editForm.transport_mode, origin: editForm.origin_country, destination: editForm.destination_country, journey: null, receiverAddress: editForm.receiver_address, estimatedDelivery: editForm.estimated_delivery, operationalNote: editForm.update_note });
+      const warning = getStatusTransitionWarning(current, target);
+      if (warning && !window.confirm(warning.message)) return;
+    }
     setEditForm((current) => current ? { ...current, [field]: value } : current);
     setEditErrors((current) => current[field] ? { ...current, [field]: "" } : current);
     setEditSuccess("");
@@ -157,6 +197,9 @@ export default function ManagePage() {
     event.preventDefault();
     if (!editing || !editForm) return;
     const validationErrors = validateEditForm(editForm);
+    const statusChanged = normalize(editing.shipment_status) !== normalize(editForm.shipment_status);
+    const locationChanged = normalize(editing.current_location) !== normalize(editForm.current_location);
+    if (editForm.update_note.trim() && !statusChanged) validationErrors.update_note = "Change the shipment status to attach this note to a new checkpoint event.";
     if (Object.keys(validationErrors).length) {
       setEditErrors(validationErrors);
       setEditSuccess("");
@@ -165,19 +208,18 @@ export default function ManagePage() {
     setSaving(true);
     setEditErrors({});
     setEditSuccess("");
+    const automation = automateForm(editForm);
     const payload = {
       client_name: editForm.client_name.trim(),
-      client_email: editForm.client_email.trim() || null,
       origin_country: editForm.origin_country.trim(),
       destination_country: editForm.destination_country.trim(),
-      current_location: editForm.current_location.trim() || null,
+      current_location: locationChanged ? editForm.current_location.trim() || null : statusChanged ? automation.currentLocation : editing.current_location,
       courier_name: editForm.courier_name.trim() || null,
       item_description: editForm.item_description.trim() || null,
       estimated_delivery: editForm.estimated_delivery || null,
       transport_mode: editForm.transport_mode,
       receiver_name: editForm.receiver_name.trim() || null,
       receiver_phone: editForm.receiver_phone.trim() || null,
-      receiver_email: editForm.receiver_email.trim() || null,
       receiver_address: editForm.receiver_address.trim() || null,
       shipment_status: editForm.shipment_status,
       weight_kg: editForm.weight_kg === "" ? null : Number(editForm.weight_kg),
@@ -191,27 +233,24 @@ export default function ManagePage() {
       setSaving(false);
       return;
     }
-    const statusChanged = normalize(editing.shipment_status) !== normalize(editForm.shipment_status);
     if (statusChanged) {
       const { error: historyError } = await createTrackingEvent({
         shipmentId: editing.id,
         trackingNumber: editing.tracking_number,
         status: editForm.shipment_status,
         transportMode: editForm.transport_mode,
-        currentLocation: editForm.current_location.trim() || null,
+        currentLocation: locationChanged ? editForm.current_location.trim() || automation.currentLocation : automation.currentLocation,
         originCountry: editForm.origin_country,
         destinationCountry: editForm.destination_country,
         receiverAddress: editForm.receiver_address.trim() || null,
         estimatedDelivery: editForm.estimated_delivery || null,
-        customNote: editForm.update_note.trim() || null,
+        customNote: editForm.update_note.trim() || automation.customerNote,
       });
       if (historyError) {
         setEditErrors({ form: `Shipment updated, but history could not be saved: ${historyError.message}` });
         setSaving(false);
         return;
       }
-      const eventType = normalize(editForm.shipment_status) === "delivered" ? "delivered" : "status_changed";
-      void sendAutomaticNotification(editing.id, eventType);
     }
     await loadShipments();
     const refreshed = updatedData as Shipment;
@@ -288,7 +327,7 @@ export default function ManagePage() {
                     <td className="px-5 py-4 text-gray-600">{displayDate(shipment.estimated_delivery)}</td>
                     <td className="px-5 py-4 text-gray-600">{displayDate(shipment.created_at)}</td>
                     <td className="px-5 py-4"><div className="flex items-center gap-2">
-                      <button type="button" onClick={() => setViewing(shipment)} className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">View</button>
+                      <button type="button" onClick={() => void openView(shipment)} className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100">View</button>
                       <button type="button" onClick={() => openEdit(shipment)} className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100">Edit</button>
                       <button type="button" disabled={deletingId === shipment.id} onClick={() => void deleteShipment(shipment)} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50">{deletingId === shipment.id ? "Deleting..." : "Delete"}</button>
                     </div></td>
@@ -313,6 +352,29 @@ export default function ManagePage() {
           <div className="sm:col-span-2"><Detail label="Item Description" value={viewing.item_description} /></div>
           <Detail label="Created Date" value={displayDate(viewing.created_at)} />
         </div>
+        <section className="mt-6 border-t border-gray-100 pt-5">
+          <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-800">Shipment History</h3>
+          {viewHistoryLoading ? (
+            <p className="mt-3 text-sm text-gray-500">Loading shipment history...</p>
+          ) : viewHistoryError ? (
+            <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">Unable to read shipment history: {viewHistoryError}</p>
+          ) : viewHistory.length === 0 ? (
+            <p className="mt-3 text-sm text-gray-500">No shipment history recorded.</p>
+          ) : (
+            <ol className="mt-3 divide-y divide-gray-100 rounded-xl border border-gray-100">
+              {viewHistory.map((entry) => (
+                <li key={entry.id} className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-800">{entry.status}</p>
+                    <p className="mt-0.5 text-sm text-gray-600">{entry.location || "Location not recorded"}</p>
+                    {entry.note && <p className="mt-1 text-sm text-gray-500">{entry.note}</p>}
+                  </div>
+                  <time dateTime={entry.created_at} className="text-xs font-medium text-gray-500 sm:text-right">{displayDateTime(entry.created_at)}</time>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
       </Modal>}
 
       {editing && editForm && <ShipmentEditor shipment={editing} form={editForm} statusOptions={STATUS_OPTIONS} errors={editErrors} saving={saving} success={editSuccess} onChange={updateEditField} onSubmit={saveEdit} onClose={closeEdit} />}

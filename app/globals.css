@@ -5,6 +5,60 @@
   --foreground: #171717;
 }
 
+/* Compact form controls used by the admin Route Builder. */
+.field {
+  margin-top: 0.25rem;
+  height: 2.5rem;
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0 0.75rem;
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 600;
+  outline: none;
+}
+
+.field:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px #dbeafe;
+}
+
+.mini {
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0.25rem 0.5rem;
+  color: #475569;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.mini:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.workflow-field {
+  min-height: 2.75rem;
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  padding: 0 0.85rem;
+  color: #0f172a;
+  font-size: 0.875rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.workflow-field:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px #dbeafe;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
