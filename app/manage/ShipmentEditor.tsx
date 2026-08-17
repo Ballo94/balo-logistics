@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import ShipmentDocumentsManager from "../components/ShipmentDocumentsManager";
 import { automateShipmentOperations } from "../lib/operations-automation";
 
 export const TRANSPORT_OPTIONS = ["Air", "Sea", "Road", "Multimodal", "Rail"] as const;
@@ -52,6 +53,7 @@ export function ShipmentEditor({ shipment, form, statusOptions, errors, saving, 
             <EditorSection number="03" title="Receiver / Client"><InputField label="Receiver / Client Name" value={form.receiver_name} onChange={(value) => onChange("receiver_name", value)}/><InputField label="Phone Number" type="tel" value={form.receiver_phone} onChange={(value) => onChange("receiver_phone", value)}/><div className="sm:col-span-2"><InputField label="Delivery Address" value={form.receiver_address} onChange={(value) => onChange("receiver_address", value)}/></div></EditorSection>
             <EditorSection number="04" title="Package"><div className="sm:col-span-2"><TextAreaField label="Item Description" value={form.item_description} onChange={(value) => onChange("item_description", value)} rows={2}/></div><InputField label="Package Type" value={form.package_type} onChange={(value) => onChange("package_type", value)} placeholder="Cartons, pallet, container…"/><InputField label="Quantity" type="number" min="0" step="1" value={form.package_count} error={errors.package_count} onChange={(value) => onChange("package_count", value)}/><InputField label="Weight (kg)" type="number" min="0" step="0.01" value={form.weight_kg} error={errors.weight_kg} onChange={(value) => onChange("weight_kg", value)}/><InputField label="Declared / Insured Value" type="number" min="0" step="0.01" value={form.declared_value} error={errors.declared_value} onChange={(value) => onChange("declared_value", value)}/></EditorSection>
             <EditorSection number="05" title="Route / Delivery"><InputField label="Origin" value={form.origin_country} error={errors.origin_country} onChange={(value) => onChange("origin_country", value)} required/><InputField label="Destination" value={form.destination_country} error={errors.destination_country} onChange={(value) => onChange("destination_country", value)} required/><ReadOnlyField label="Next Checkpoint" value={automation.nextCheckpoint} derived/><ReadOnlyField label="Next Location" value={automation.nextLocation} derived/></EditorSection>
+            <EditorSection number="06" title="Documents"><div className="sm:col-span-2"><ShipmentDocumentsManager shipmentId={shipment.id} transportMode={form.transport_mode} cargoDescription={form.item_description}/></div></EditorSection>
           </div>
         </div>
 
