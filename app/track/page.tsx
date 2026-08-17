@@ -170,7 +170,7 @@ export default function TrackPage() {
             <LiveStatusCard state={shipmentState} route={route} operations={operations} />
           </div>
           <ShipmentCommunications communications={communications} />
-          <ShipmentDocuments documents={shipmentDocuments} />
+          <ShipmentDocuments documents={shipmentDocuments} trackingNumber={shipment.tracking_number} />
           <ShipmentInformation shipment={shipment} state={shipmentState} journey={routeJourney} route={route} />
           <SupportCard />
           <TrustIndicators />
