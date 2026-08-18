@@ -9,21 +9,9 @@ import { deriveShipmentState, type ShipmentState, type TransportKind } from "../
 import type { RouteJourney } from "../lib/route-intelligence";
 import { createRouteJourneyPresentation, type RouteJourneyPresentation } from "../lib/route-intelligence/presentation";
 import { automateShipmentOperations, type OperationsAutomation } from "../lib/operations-automation";
-import { loadSavedRoute } from "../lib/saved-routes";
-import { loadShipmentRouteSnapshot } from "../lib/shipment-route-snapshots";
-import { loadPublicShipmentDocuments, type ShipmentDocument } from "../lib/shipment-document-records";
-import { loadPublicCommunications, markCommunicationsViewed, type ShipmentCommunication } from "../lib/shipment-communications";
-import { supabase } from "../lib/supabase";
-
-type Shipment = {
-  id: number; tracking_number: string; client_name: string; origin_country: string; destination_country: string;
-  current_location: string | null; shipment_status: string | null; transport_mode: string | null;
-  estimated_delivery: string | null; item_description: string | null; created_at: string;
-  courier_name: string | null; weight_kg: number | null; package_count: number | null; package_type: string | null;
-  declared_value: number | null; receiver_name: string | null; receiver_phone: string | null; receiver_address: string | null;
-  route_template_id: string | null;
-};
-type ShipmentHistory = { status: string; location: string | null; created_at: string };
+import type { ShipmentDocument } from "../lib/shipment-document-records";
+import type { ShipmentCommunication } from "../lib/shipment-communications";
+import { lookupPublicTracking, type PublicShipmentHistory as ShipmentHistory, type PublicShipmentRecord as Shipment } from "../lib/public-tracking";
 
 function formatDate(value: string | null | undefined, includeTime = false) {
   if (!value) return "";
@@ -44,30 +32,16 @@ export default function TrackPage() {
   const [message, setMessage] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignedJourney, setAssignedJourney] = useState<RouteJourney | null>(null);
-  const shipmentId = shipment?.id;
 
-  const loadPublicHistory = useCallback(async (trackingNumber: string) => {
-    const { data, error } = await supabase.rpc("get_public_shipment_history", {
-      p_tracking_number: trackingNumber,
-    });
-    return { data: (data ?? []) as ShipmentHistory[], error };
+  const loadShipment = useCallback(async (query: string, silent = false) => {
+    if (!silent) { setLoading(true); setMessage(""); setShipment(null); setHistory([]); setShipmentDocuments([]); setCommunications([]); setAssignedJourney(null); }
+    const { data, error } = await lookupPublicTracking(query);
+    if (error || !data) {
+      if (!silent) { setMessage(error?.message.includes("No shipment") ? "No shipment found with that tracking number." : "We could not retrieve tracking information. Please try again."); setLoading(false); }
+      return;
+    }
+    setShipment(data.shipment); setHistory(data.history); setShipmentDocuments(data.documents); setCommunications(data.communications); setAssignedJourney(data.journey); setLoading(false);
   }, []);
-
-  const loadShipment = useCallback(async (query: string) => {
-    setLoading(true); setMessage(""); setShipment(null); setHistory([]); setShipmentDocuments([]); setCommunications([]); setAssignedJourney(null);
-    const { data, error } = await supabase.from("shipments")
-      .select("id, tracking_number, client_name, origin_country, destination_country, current_location, shipment_status, transport_mode, estimated_delivery, item_description, created_at, courier_name, weight_kg, package_count, package_type, declared_value, receiver_name, receiver_phone, receiver_address")
-      .eq("tracking_number", query).maybeSingle();
-    if (error) { setMessage("We could not retrieve tracking information. Please try again."); setLoading(false); return; }
-    if (!data) { setMessage("No shipment found with that tracking number."); setLoading(false); return; }
-    const { data: routeAssignment } = await supabase.from("shipments").select("route_template_id").eq("id", data.id).maybeSingle();
-    const typedShipment = { ...data, route_template_id: (routeAssignment?.route_template_id as string | null | undefined) ?? null } as Shipment;
-    const { data: historyData, error: historyError } = await loadPublicHistory(typedShipment.tracking_number);
-    const [{ data: documentData }, { data: communicationData }] = await Promise.all([loadPublicShipmentDocuments(typedShipment.tracking_number), loadPublicCommunications(typedShipment.tracking_number)]);
-    setShipment(typedShipment); setHistory((historyData ?? []) as ShipmentHistory[]); setShipmentDocuments((documentData ?? []) as ShipmentDocument[]); setCommunications((communicationData ?? []) as ShipmentCommunication[]); setLoading(false);
-    if (historyError) setMessage("Shipment found, but its recorded tracking history is temporarily unavailable.");
-    if (communicationData?.length) void markCommunicationsViewed(typedShipment.tracking_number);
-  }, [loadPublicHistory]);
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search).get("tracking")?.trim();
@@ -80,51 +54,13 @@ export default function TrackPage() {
   }, [loadShipment]);
 
   useEffect(() => {
-    if (!shipmentId) return;
-    const channel = supabase.channel(`customer-tracking-${shipmentId}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "shipments", filter: `id=eq.${shipmentId}` }, (payload) => {
-        setShipment((current) => current ? { ...current, ...payload.new } as Shipment : current);
-        if (shipment?.tracking_number) window.setTimeout(() => { void loadPublicHistory(shipment.tracking_number).then(({ data }) => setHistory(data)); }, 750);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "shipment_documents", filter: `shipment_id=eq.${shipmentId}` }, () => { if (shipment?.tracking_number) void loadPublicShipmentDocuments(shipment.tracking_number).then(({ data }) => setShipmentDocuments((data ?? []) as ShipmentDocument[])); })
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [loadPublicHistory, shipment?.tracking_number, shipmentId]);
-
-  useEffect(() => {
-    const currentShipmentId = shipment?.id;
-    const routeId = shipment?.route_template_id;
-    if (!currentShipmentId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAssignedJourney(null);
-      return;
-    }
-    let active = true;
-    const refreshRoute = async () => {
-      const savedSnapshot = await loadShipmentRouteSnapshot(currentShipmentId);
-      if (!active) return;
-      if (savedSnapshot.journey) {
-        setAssignedJourney(savedSnapshot.journey);
-        return;
-      }
-      if (!routeId) {
-        setAssignedJourney(null);
-        return;
-      }
-      const savedRoute = await loadSavedRoute(routeId);
-      if (active) setAssignedJourney(savedRoute.journey);
-    };
-    void refreshRoute();
-    let channel = supabase.channel(`customer-route-${currentShipmentId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "shipment_route_stops", filter: `shipment_id=eq.${currentShipmentId}` }, () => void refreshRoute());
-    if (routeId) {
-      channel = channel
-        .on("postgres_changes", { event: "*", schema: "public", table: "route_stops", filter: `route_template_id=eq.${routeId}` }, () => void refreshRoute())
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "route_templates", filter: `id=eq.${routeId}` }, () => void refreshRoute());
-    }
-    channel.subscribe();
-    return () => { active = false; void supabase.removeChannel(channel); };
-  }, [shipment?.id, shipment?.route_template_id]);
+    const activeTrackingNumber = shipment?.tracking_number;
+    if (!activeTrackingNumber) return;
+    const refresh = () => { if (document.visibilityState === "visible") void loadShipment(activeTrackingNumber, true); };
+    const interval = window.setInterval(refresh, 30000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", refresh); };
+  }, [loadShipment, shipment?.tracking_number]);
 
   async function searchShipment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -170,7 +106,7 @@ export default function TrackPage() {
             <LiveStatusCard state={shipmentState} route={route} operations={operations} />
           </div>
           <ShipmentCommunications communications={communications} />
-          <ShipmentDocuments documents={shipmentDocuments} trackingNumber={shipment.tracking_number} />
+          <ShipmentDocuments documents={shipmentDocuments} trackingNumber={shipment.tracking_number} urlsAreResolved />
           <ShipmentInformation shipment={shipment} state={shipmentState} journey={routeJourney} route={route} />
           <SupportCard />
           <TrustIndicators />

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { createDocumentUrl, formatFileSize, type ShipmentDocument } from "../lib/shipment-document-records";
 
-export default function ShipmentDocuments({ documents, trackingNumber }: { documents: ShipmentDocument[]; trackingNumber: string }) {
+export default function ShipmentDocuments({ documents, trackingNumber, urlsAreResolved = false }: { documents: ShipmentDocument[]; trackingNumber: string; urlsAreResolved?: boolean }) {
   const [rows, setRows] = useState(documents);
   const [urls, setUrls] = useState<Record<number, { view: string; download: string }>>({});
   const [uploading, setUploading] = useState<ShipmentDocument | null>(null);
@@ -16,12 +16,13 @@ export default function ShipmentDocuments({ documents, trackingNumber }: { docum
     let active = true;
     const timer = window.setTimeout(() => {
       void Promise.all(rows.filter((document) => document.file_url).map(async (document) => {
+        if (urlsAreResolved) return [document.id, { view: document.view_url ?? "", download: document.download_url ?? "" }] as const;
         const [view, download] = await Promise.all([createDocumentUrl(document.file_url!), createDocumentUrl(document.file_url!, document.document_name)]);
         return [document.id, { view: view.data?.signedUrl ?? "", download: download.data?.signedUrl ?? "" }] as const;
       })).then((entries) => { if (active) setUrls(Object.fromEntries(entries)); });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [rows]);
+  }, [rows, urlsAreResolved]);
   useEffect(() => { if (!uploading) return; const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) { setUploading(null); setFile(null); setError(""); } }; window.addEventListener("keydown", closeOnEscape); return () => window.removeEventListener("keydown", closeOnEscape); }, [busy, uploading]);
 
   function openUpload(document: ShipmentDocument) { setUploading(document); setFile(null); setError(""); }

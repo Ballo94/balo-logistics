@@ -11,7 +11,7 @@ export type ShipmentDocumentType = (typeof SHIPMENT_DOCUMENT_TYPES)[number];
 export type ShipmentDocumentDirection = "Sent to Customer" | "Received from Customer" | "Document Request" | "Internal / Admin";
 export type ShipmentDocument = {
   id: number;
-  shipment_id: number;
+  shipment_id?: number;
   document_name: string;
   document_type: ShipmentDocumentType;
   document_direction: ShipmentDocumentDirection;
@@ -21,6 +21,8 @@ export type ShipmentDocument = {
   uploaded_at: string;
   created_by?: string | null;
   notes?: string | null;
+  view_url?: string;
+  download_url?: string;
 };
 
 const ADMIN_DOCUMENT_COLUMNS = "id, shipment_id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at, created_by, notes";

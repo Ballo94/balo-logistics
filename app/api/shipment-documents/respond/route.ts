@@ -62,7 +62,11 @@ export async function POST(request: Request) {
     await supabase.storage.from(SHIPMENT_DOCUMENT_BUCKET).remove([objectPath]);
     return NextResponse.json({ error: updateError ? "The document request could not be completed." : "This request was already completed." }, { status: updateError ? 500 : 409 });
   }
-  return NextResponse.json({ document: updated satisfies RequestRecord, filename: originalName });
+  const [view, download] = await Promise.all([
+    supabase.storage.from(SHIPMENT_DOCUMENT_BUCKET).createSignedUrl(objectPath, 3600),
+    supabase.storage.from(SHIPMENT_DOCUMENT_BUCKET).createSignedUrl(objectPath, 3600, { download: originalName }),
+  ]);
+  return NextResponse.json({ document: { ...updated, view_url: view.data?.signedUrl ?? "", download_url: download.data?.signedUrl ?? "" } satisfies RequestRecord & { view_url: string; download_url: string }, filename: originalName });
 }
 
 function textField(value: FormDataEntryValue | null) { return typeof value === "string" ? value.trim() : ""; }

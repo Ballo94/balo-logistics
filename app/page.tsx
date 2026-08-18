@@ -3,24 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { supabase } from "./lib/supabase";
-
-type Shipment = {
-  tracking_number: string;
-  shipment_status: string | null;
-  current_location: string | null;
-  origin_country: string;
-  destination_country: string;
-  courier_name: string | null;
-  estimated_delivery: string | null;
-  transport_mode: string | null;
-  cargo_type?: string | null;
-  commodity?: string | null;
-  quantity?: number | null;
-  unit?: string | null;
-  container_number?: string | null;
-  next_checkpoint?: string | null;
-};
+import { lookupPublicShipment, type PublicShipmentRecord as Shipment } from "./lib/public-tracking";
 
 const HERO_SLIDES = [
   { src: "/balo-port-hero.webp", alt: "Container vessel arriving at the Port of Durban with cranes and terminal trucks", label: "African Port Operations", position: "62% center" },
@@ -39,7 +22,7 @@ export default function Home() {
     const query = trackingNumber.trim();
     if (!query) { setMessage("Enter a tracking number to continue."); setShipment(null); return; }
     setLoading(true); setMessage("");
-    const { data, error } = await supabase.from("shipments").select("*").eq("tracking_number", query).single();
+    const { data, error } = await lookupPublicShipment(query);
     if (error) { setShipment(null); setMessage("No shipment found with that tracking number."); }
     else { setShipment(data as Shipment); }
     setLoading(false);
