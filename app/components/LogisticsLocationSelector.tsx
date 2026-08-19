@@ -42,7 +42,7 @@ export default function LogisticsLocationSelector({ transportMode, onAdd }: { tr
 
   function addSelected() {
     if (!selected) { setMessage("Select a verified logistics location first."); return; }
-    onAdd({ id: crypto.randomUUID(), name: selected.name, country: selected.country, city: selected.city ?? selected.country, stop_type: routeStopType(selected.location_type), code: selected.code, operational_notes: null, onward_transport: null, logistics_location_id: selected.id, logistics_location: { country_code: selected.country_code, location_type: selected.location_type, secondary_code: selected.secondary_code } });
+    onAdd({ id: crypto.randomUUID(), name: selected.name, country: selected.country, city: selected.city ?? selected.country, stop_type: routeStopType(selected.location_type), code: selected.code, operational_notes: null, onward_transport: null, logistics_location_id: selected.id, logistics_location: { country_code: selected.country_code, location_type: selected.location_type, secondary_code: selected.secondary_code, latitude: selected.latitude, longitude: selected.longitude, verified: selected.verified } });
     setSelected(null); setQuery(""); setResults([]); setMessage("Verified location added to the route.");
   }
 

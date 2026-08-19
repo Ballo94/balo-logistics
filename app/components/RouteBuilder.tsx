@@ -35,6 +35,23 @@ function persistedStops(routeId: string, stops: EditableRouteStop[]): SavedRoute
   return stops.map((stop, position) => ({ ...stop, route_template_id: routeId, position }));
 }
 
+function editableStop(stop: SavedRouteStop): EditableRouteStop {
+  return {
+    id: stop.id, name: stop.name, country: stop.country, city: stop.city,
+    stop_type: stop.stop_type, code: stop.code, operational_notes: stop.operational_notes,
+    onward_transport: stop.onward_transport, estimated_duration_hours: stop.estimated_duration_hours,
+    estimated_distance_km: stop.estimated_distance_km,
+    system_recommended_duration_hours: stop.system_recommended_duration_hours,
+    system_recommended_distance_km: stop.system_recommended_distance_km,
+    system_recommendation_confidence: stop.system_recommendation_confidence,
+    system_recommendation_metadata: stop.system_recommendation_metadata,
+    system_recommendation_calculated_at: stop.system_recommendation_calculated_at,
+    leg_internal_notes: stop.leg_internal_notes, expected_arrival_offset: stop.expected_arrival_offset,
+    expected_departure_offset: stop.expected_departure_offset, default_status_text: stop.default_status_text,
+    logistics_location_id: stop.logistics_location_id, logistics_location: stop.logistics_location ?? null,
+  };
+}
+
 function validateRoute(name: string, stops: EditableRouteStop[]) {
   if (!name.trim()) return "Enter a route name.";
   if (stops.length < 2) return "Every route must contain an origin and destination.";
@@ -76,7 +93,7 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
     void loadSavedRoute(value).then(({ template, stops: savedStops }) => {
       if (!active || !template) return;
       setRouteId(template.id); setName(template.name); setMode(template.transport_mode);
-      setStops(savedStops.map((stop) => ({ id: stop.id, name: stop.name, country: stop.country, city: stop.city, stop_type: stop.stop_type, code: stop.code, operational_notes: stop.operational_notes, onward_transport: stop.onward_transport, estimated_duration_hours: stop.estimated_duration_hours, estimated_distance_km: stop.estimated_distance_km, leg_internal_notes: stop.leg_internal_notes, expected_arrival_offset: stop.expected_arrival_offset, expected_departure_offset: stop.expected_departure_offset, default_status_text: stop.default_status_text, logistics_location_id: stop.logistics_location_id, logistics_location: stop.logistics_location ?? null })));
+      setStops(savedStops.map(editableStop));
       setDirty(false);
     });
     return () => { active = false; };
@@ -87,7 +104,7 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
     const saved = await loadSavedRoute(id);
     if (!saved.template) { setMessage(saved.error?.message ?? "Unable to load this route."); return; }
     setRouteId(saved.template.id); setName(saved.template.name); setMode(saved.template.transport_mode);
-    setStops(saved.stops.map((stop) => ({ id: stop.id, name: stop.name, country: stop.country, city: stop.city, stop_type: stop.stop_type, code: stop.code, operational_notes: stop.operational_notes, onward_transport: stop.onward_transport, estimated_duration_hours: stop.estimated_duration_hours, estimated_distance_km: stop.estimated_distance_km, leg_internal_notes: stop.leg_internal_notes, expected_arrival_offset: stop.expected_arrival_offset, expected_departure_offset: stop.expected_departure_offset, default_status_text: stop.default_status_text, logistics_location_id: stop.logistics_location_id, logistics_location: stop.logistics_location ?? null })));
+    setStops(saved.stops.map(editableStop));
     setDirty(false);
     setMessage(value === id ? "Assigned route loaded." : "Route loaded. Review it, then assign it to this shipment.");
   }
@@ -124,7 +141,7 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
         if (deleteError) { setMessage(deleteError.message); setSaving(false); return null; }
       }
     }
-    const rows = stops.map((stop, position) => ({ route_template_id: savedId, position, name: stop.name.trim(), country: stop.country.trim(), city: stop.city.trim(), stop_type: stop.stop_type, code: stop.code?.trim() || null, operational_notes: stop.operational_notes?.trim() || null, onward_transport: position === stops.length - 1 ? null : stop.onward_transport, estimated_duration_hours: position === stops.length - 1 ? null : stop.estimated_duration_hours ?? null, estimated_distance_km: position === stops.length - 1 ? null : stop.estimated_distance_km ?? null, leg_internal_notes: position === stops.length - 1 ? null : stop.leg_internal_notes?.trim() || null, expected_arrival_offset: stop.expected_arrival_offset ?? null, expected_departure_offset: stop.expected_departure_offset ?? null, default_status_text: stop.default_status_text?.trim() || null, logistics_location_id: stop.logistics_location_id ?? null }));
+    const rows = stops.map((stop, position) => ({ route_template_id: savedId, position, name: stop.name.trim(), country: stop.country.trim(), city: stop.city.trim(), stop_type: stop.stop_type, code: stop.code?.trim() || null, operational_notes: stop.operational_notes?.trim() || null, onward_transport: position === stops.length - 1 ? null : stop.onward_transport, estimated_duration_hours: position === stops.length - 1 ? null : stop.estimated_duration_hours ?? null, estimated_distance_km: position === stops.length - 1 ? null : stop.estimated_distance_km ?? null, system_recommended_duration_hours: position === stops.length - 1 ? null : stop.system_recommended_duration_hours ?? null, system_recommended_distance_km: position === stops.length - 1 ? null : stop.system_recommended_distance_km ?? null, system_recommendation_confidence: position === stops.length - 1 ? null : stop.system_recommendation_confidence ?? null, system_recommendation_metadata: position === stops.length - 1 ? null : stop.system_recommendation_metadata ?? null, system_recommendation_calculated_at: position === stops.length - 1 ? null : stop.system_recommendation_calculated_at ?? null, leg_internal_notes: position === stops.length - 1 ? null : stop.leg_internal_notes?.trim() || null, expected_arrival_offset: stop.expected_arrival_offset ?? null, expected_departure_offset: stop.expected_departure_offset ?? null, default_status_text: stop.default_status_text?.trim() || null, logistics_location_id: stop.logistics_location_id ?? null }));
     const { error: stopError } = await supabase.from("route_stops").insert(rows);
     if (stopError) { setMessage(stopError.message); setSaving(false); return null; }
     setRouteId(savedId); setName(routeName); setDirty(false); await refreshTemplates(); setSaving(false);

@@ -33,7 +33,7 @@ export async function loadShipmentRouteSnapshot(shipmentId: number) {
       // Snapshot rows already contain the immutable route identity. Do not join the
       // admin-only location library here: public tracking must be able to read the
       // copied stop names, cities, countries, codes, and ordering independently.
-      .select("id, shipment_id, position, name, country, city, stop_type, code, operational_notes, onward_transport, estimated_duration_hours, estimated_distance_km, leg_internal_notes, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id")
+      .select("id, shipment_id, position, name, country, city, stop_type, code, operational_notes, onward_transport, estimated_duration_hours, estimated_distance_km, system_recommended_duration_hours, system_recommended_distance_km, system_recommendation_confidence, system_recommendation_metadata, system_recommendation_calculated_at, leg_internal_notes, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id")
       .eq("shipment_id", shipmentId)
       .order("position"),
   ]);
