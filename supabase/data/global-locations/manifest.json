@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-08-12T08:04:28.457Z",
+  "sources": {
+    "countries": "https://davidmegginson.github.io/ourairports-data/countries.csv",
+    "airports": "https://davidmegginson.github.io/ourairports-data/airports.csv",
+    "seaports": "https://services-eu1.arcgis.com/BuS9rtTsYEV5C0xh/arcgis/rest/services/World_Port_Index/FeatureServer/0/query"
+  },
+  "filters": {
+    "airports": "IATA-coded airports with scheduled service, plus IATA-coded large airports",
+    "seaports": "All commercially selected World Port Index records with an ISO-mappable country"
+  },
+  "counts": {
+    "countries": 250,
+    "airports": 4180,
+    "seaports": 3624
+  },
+  "chunk_size": 500
+}

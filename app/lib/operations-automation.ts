@@ -1,6 +1,6 @@
 import { deriveShipmentState, normalizeShipmentStatus, type ShipmentState } from "./shipment-state";
 import { tryBuildRouteJourney, type RouteCheckpoint, type RouteJourney, type RouteLocationInput } from "./route-intelligence";
-import { checkpointIndexForStatus } from "./route-intelligence/presentation";
+import { checkpointIndexForShipmentStatus } from "./route-intelligence/presentation";
 
 export type OperationsAutomationInput = {
   shipmentStatus: string | null | undefined;
@@ -11,6 +11,9 @@ export type OperationsAutomationInput = {
   receiverAddress?: string | null;
   estimatedDelivery?: string | null;
   operationalNote?: string | null;
+  previousShipmentStatus?: string | null;
+  statusHistory?: readonly string[];
+  exactCheckpointId?: string | null;
   /** Undefined preserves the legacy generated route; null explicitly means no assigned route. */
   journey?: RouteJourney | null;
 };
@@ -34,16 +37,6 @@ export type OperationsAutomation = {
 
 const BASELINE_STATUSES = new Set(["shipment created", "collected", "in warehouse", "in transit", "customs clearance", "out for delivery", "delivered", "delayed", "shipment issue"]);
 const EXCEPTION_STATUSES = ["Delayed", "Shipment Issue"];
-
-function exactCheckpoint(journey: RouteJourney, status: string | null | undefined) {
-  const target = normalizeShipmentStatus(status);
-  return journey.checkpoints.find((item) => normalizeShipmentStatus(item.label) === target);
-}
-
-function checkpointPosition(journey: RouteJourney, state: ShipmentState, status: string | null | undefined) {
-  const exact = exactCheckpoint(journey, status);
-  return exact ? exact.sequence : checkpointIndexForStatus(journey, state.canonicalStatus);
-}
 
 function transitLocation(journey: RouteJourney, checkpoint: RouteCheckpoint) {
   if (checkpoint.kind === "shipment_created") return "Origin / Supplier Location";
@@ -110,7 +103,7 @@ export function automateShipmentOperations(input: OperationsAutomationInput): Op
     statusOptions: [],
   };
 
-  const checkpointIndex = checkpointPosition(journey, state, input.shipmentStatus);
+  const checkpointIndex = checkpointIndexForShipmentStatus(journey, state, input.previousShipmentStatus, input.statusHistory, input.exactCheckpointId);
   const current = journey.checkpoints[checkpointIndex];
   const next = state.canonicalStatus === "delivered" ? undefined : nextCheckpointFor(journey, current);
   return {

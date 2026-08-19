@@ -1,6 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+function isVerifiedAdmin(user: { email?: string | null; app_metadata?: Record<string, unknown> }) {
+  const configuredAdminEmail = process.env.BALO_ADMIN_EMAIL?.trim().toLowerCase();
+  const appRole = user.app_metadata?.role;
+  const hasAdminRole = typeof appRole === "string" && appRole.trim().toLowerCase() === "admin";
+  const hasConfiguredAdminEmail = Boolean(
+    configuredAdminEmail && user.email?.trim().toLowerCase() === configuredAdminEmail,
+  );
+
+  return hasAdminRole || hasConfiguredAdminEmail;
+}
+
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   if (request.nextUrl.pathname === "/customer/login") return response;
@@ -26,10 +37,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
   const { data: customerProfile } = await supabase.from("customer_profiles").select("user_id").eq("user_id", user.id).maybeSingle();
-  if (request.nextUrl.pathname.startsWith("/admin") || request.nextUrl.pathname.startsWith("/manage") || request.nextUrl.pathname.startsWith("/settings")) {
-    if (customerProfile) return NextResponse.redirect(new URL("/customer", request.url));
+  const isAdmin = isVerifiedAdmin(user);
+  const isAdminRoute = request.nextUrl.pathname.startsWith("/admin")
+    || request.nextUrl.pathname.startsWith("/manage")
+    || request.nextUrl.pathname.startsWith("/settings");
+
+  if (isAdminRoute && !isAdmin) {
+    return NextResponse.redirect(new URL(customerProfile ? "/customer" : "/", request.url));
   }
-  if (request.nextUrl.pathname.startsWith("/customer") && !customerProfile) return NextResponse.redirect(new URL("/admin", request.url));
+  if (request.nextUrl.pathname.startsWith("/customer") && !customerProfile) {
+    return NextResponse.redirect(new URL(isAdmin ? "/admin" : "/", request.url));
+  }
   return response;
 }
 

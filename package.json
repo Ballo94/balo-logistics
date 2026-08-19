@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "data:locations": "node scripts/build-global-location-library.mjs",
+    "test:seaports": "node scripts/test-seaport-normalization.mjs",
     "start": "next start",
     "lint": "eslint"
   },

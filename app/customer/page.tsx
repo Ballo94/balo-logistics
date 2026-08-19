@@ -11,7 +11,7 @@ type Filter = (typeof FILTERS)[number];
 type Profile = { user_id: string; full_name: string; email: string; phone: string | null; notification_preference: string };
 type Summary = { total: number; active: number; delivered: number; pending: number };
 type Unread = { communications: number; documents: number; events: number };
-export type CustomerShipment = { id: number; tracking_number: string; client_name: string; origin_country: string; destination_country: string; current_location: string | null; shipment_status: string | null; transport_mode: string | null; estimated_delivery: string | null; created_at: string; courier_name: string | null; item_description: string | null; weight_kg: number | null; package_count: number | null; package_type: string | null; receiver_name: string | null; receiver_phone: string | null; receiver_email: string | null; receiver_address: string | null; route_template_id: string | null; last_updated?: string };
+export type CustomerShipment = { id: number; tracking_number: string; client_name: string; origin_country: string; destination_country: string; current_location: string | null; current_route_checkpoint_id: string | null; shipment_status: string | null; transport_mode: string | null; estimated_delivery: string | null; created_at: string; courier_name: string | null; item_description: string | null; weight_kg: number | null; package_count: number | null; package_type: string | null; receiver_name: string | null; receiver_phone: string | null; receiver_email: string | null; receiver_address: string | null; route_template_id: string | null; last_updated?: string };
 
 const PAGE_SIZE = 10;
 
@@ -42,7 +42,7 @@ export default function CustomerPortalPage() {
 
   const loadShipments = useCallback(async () => {
     setLoading(true); setError("");
-    let query = supabase.from("shipments").select("id, tracking_number, client_name, origin_country, destination_country, current_location, shipment_status, transport_mode, estimated_delivery, created_at, courier_name, item_description, weight_kg, package_count, package_type, receiver_name, receiver_phone, receiver_email, receiver_address, route_template_id", { count: "exact" });
+    let query = supabase.from("shipments").select("id, tracking_number, client_name, origin_country, destination_country, current_location, current_route_checkpoint_id, shipment_status, transport_mode, estimated_delivery, created_at, courier_name, item_description, weight_kg, package_count, package_type, receiver_name, receiver_phone, receiver_email, receiver_address, route_template_id", { count: "exact" });
     const term = search.trim().replace(/[,%()]/g, "");
     if (term) query = query.or(`tracking_number.ilike.%${term}%,origin_country.ilike.%${term}%,destination_country.ilike.%${term}%,receiver_name.ilike.%${term}%`);
     if (filter === "Active") query = query.not("shipment_status", "in", "(Delivered,Pending,Shipment Created)");

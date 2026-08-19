@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabase";
 import { createTrackingEvent } from "../lib/tracking-events";
 import { ShipmentEditor, TRANSPORT_OPTIONS, type ShipmentEditForm, type ShipmentEditorRecord } from "./ShipmentEditor";
 import { automateShipmentOperations, getStatusTransitionWarning } from "../lib/operations-automation";
+import { weightToKilograms } from "../lib/package-fields";
 
 const STATUS_OPTIONS = [
   "Shipment Created",
@@ -65,6 +66,10 @@ function shipmentToForm(shipment: Shipment): ShipmentEditForm {
     tracking_number: shipment.tracking_number,
     client_name: shipment.client_name,
     client_email: shipment.client_email ?? "",
+    client_company_name: shipment.client_company_name ?? "",
+    client_phone: shipment.client_phone ?? "",
+    client_address: shipment.client_address ?? "",
+    client_receive_updates: String(shipment.client_receive_updates ?? false),
     origin_country: shipment.origin_country,
     destination_country: shipment.destination_country,
     current_location: shipment.current_location ?? "",
@@ -72,30 +77,43 @@ function shipmentToForm(shipment: Shipment): ShipmentEditForm {
     item_description: shipment.item_description ?? "",
     estimated_delivery: shipment.estimated_delivery?.slice(0, 10) ?? "",
     transport_mode: shipment.transport_mode ?? "Air",
+    vessel_name: shipment.vessel_name ?? "",
     receiver_name: shipment.receiver_name ?? "",
+    receiver_company_name: shipment.receiver_company_name ?? "",
     receiver_phone: shipment.receiver_phone ?? "",
     receiver_email: shipment.receiver_email ?? "",
     receiver_address: shipment.receiver_address ?? "",
+    receiver_receive_updates: String(shipment.receiver_receive_updates ?? false),
     shipment_status: shipment.shipment_status ?? "Shipment Created",
     update_note: "",
     weight_kg: shipment.weight_kg?.toString() ?? "",
+    weight_unit: "KG",
     package_count: shipment.package_count?.toString() ?? "",
     package_type: shipment.package_type ?? "",
+    dimensions: shipment.dimensions ?? "",
+    container_number: shipment.container_number ?? "",
+    seal_number: shipment.seal_number ?? "",
     declared_value: shipment.declared_value?.toString() ?? "",
     route_template_id: shipment.route_template_id ?? "",
+    current_route_checkpoint_id: shipment.current_route_checkpoint_id ?? "",
   };
 }
 
 function validateEditForm(form: ShipmentEditForm) {
   const errors: Record<string, string> = {};
   if (!form.client_name.trim()) errors.client_name = "Sender name is required.";
+  if (!form.receiver_name.trim()) errors.receiver_name = "Receiver name is required.";
+  if (form.client_phone && !isInternationalPhone(form.client_phone)) errors.client_phone = "Use international format, for example +264 81 123 4567.";
+  if (form.receiver_phone && !isInternationalPhone(form.receiver_phone)) errors.receiver_phone = "Use international format, for example +264 81 123 4567.";
+  if (form.client_email && !/^\S+@\S+\.\S+$/.test(form.client_email)) errors.client_email = "Enter a valid email address.";
+  if (form.receiver_email && !/^\S+@\S+\.\S+$/.test(form.receiver_email)) errors.receiver_email = "Enter a valid email address.";
   if (!form.origin_country.trim()) errors.origin_country = "Origin is required.";
   if (!form.destination_country.trim()) errors.destination_country = "Destination is required.";
   if (!form.shipment_status.trim()) errors.shipment_status = "Select a shipment status.";
   if (!TRANSPORT_OPTIONS.includes(form.transport_mode as (typeof TRANSPORT_OPTIONS)[number])) errors.transport_mode = "Select a valid transport mode.";
   if (form.estimated_delivery && Number.isNaN(new Date(`${form.estimated_delivery}T00:00:00`).getTime())) errors.estimated_delivery = "Enter a valid estimated delivery date.";
-  if (form.weight_kg && (Number.isNaN(Number(form.weight_kg)) || Number(form.weight_kg) < 0)) errors.weight_kg = "Weight must be zero or greater.";
-  if (form.package_count && (!Number.isInteger(Number(form.package_count)) || Number(form.package_count) < 0)) errors.package_count = "Quantity must be a whole number of zero or greater.";
+  if (form.weight_kg && (!Number.isFinite(Number(form.weight_kg)) || Number(form.weight_kg) < 0)) errors.weight_kg = "Total weight must be a valid non-negative number.";
+  if (form.package_count && (!Number.isInteger(Number(form.package_count)) || Number(form.package_count) < 1)) errors.package_count = "Package quantity must be a whole number of at least one.";
   if (form.declared_value && (Number.isNaN(Number(form.declared_value)) || Number(form.declared_value) < 0)) errors.declared_value = "Declared value must be zero or greater.";
   return errors;
 }
@@ -193,13 +211,15 @@ export default function ManagePage() {
     setEditSuccess("");
   }
 
-  async function saveEdit(event: FormEvent<HTMLFormElement>) {
+  async function saveEdit(event: FormEvent<HTMLFormElement>, authoritativeCurrentLocation?: string) {
     event.preventDefault();
     if (!editing || !editForm) return;
     const validationErrors = validateEditForm(editForm);
     const statusChanged = normalize(editing.shipment_status) !== normalize(editForm.shipment_status);
-    const locationChanged = normalize(editing.current_location) !== normalize(editForm.current_location);
-    if (editForm.update_note.trim() && !statusChanged) validationErrors.update_note = "Change the shipment status to attach this note to a new checkpoint event.";
+    const checkpointChanged = editing.current_route_checkpoint_id !== (editForm.current_route_checkpoint_id || null);
+    const selectedCurrentLocation = authoritativeCurrentLocation?.trim() || editForm.current_location;
+    const locationChanged = normalize(editing.current_location) !== normalize(selectedCurrentLocation);
+    if (editForm.update_note.trim() && !statusChanged && !checkpointChanged) validationErrors.update_note = "Change the shipment status or route checkpoint to attach this note to a new checkpoint event.";
     if (Object.keys(validationErrors).length) {
       setEditErrors(validationErrors);
       setEditSuccess("");
@@ -209,22 +229,38 @@ export default function ManagePage() {
     setEditErrors({});
     setEditSuccess("");
     const automation = automateForm(editForm);
+    const resolvedCurrentLocation = locationChanged
+      ? selectedCurrentLocation.trim() || automation.currentLocation
+      : editing.current_location?.trim() || automation.currentLocation;
     const payload = {
       client_name: editForm.client_name.trim(),
+      client_company_name: editForm.client_company_name.trim() || null,
+      client_phone: editForm.client_phone.trim() || null,
+      client_email: editForm.client_email.trim() || null,
+      client_address: editForm.client_address.trim() || null,
+      client_receive_updates: editForm.client_receive_updates === "true",
       origin_country: editForm.origin_country.trim(),
       destination_country: editForm.destination_country.trim(),
-      current_location: locationChanged ? editForm.current_location.trim() || null : statusChanged ? automation.currentLocation : editing.current_location,
+      current_location: resolvedCurrentLocation,
       courier_name: editForm.courier_name.trim() || null,
       item_description: editForm.item_description.trim() || null,
       estimated_delivery: editForm.estimated_delivery || null,
       transport_mode: editForm.transport_mode,
+      vessel_name: editForm.vessel_name.trim() || null,
       receiver_name: editForm.receiver_name.trim() || null,
+      receiver_company_name: editForm.receiver_company_name.trim() || null,
       receiver_phone: editForm.receiver_phone.trim() || null,
+      receiver_email: editForm.receiver_email.trim() || null,
       receiver_address: editForm.receiver_address.trim() || null,
+      receiver_receive_updates: editForm.receiver_receive_updates === "true",
       shipment_status: editForm.shipment_status,
-      weight_kg: editForm.weight_kg === "" ? null : Number(editForm.weight_kg),
+      current_route_checkpoint_id: editForm.current_route_checkpoint_id || null,
+      weight_kg: weightToKilograms(editForm.weight_kg, editForm.weight_unit),
       package_count: editForm.package_count === "" ? null : Number(editForm.package_count),
       package_type: editForm.package_type.trim() || null,
+      dimensions: editForm.dimensions.trim() || null,
+      container_number: editForm.container_number.trim() || null,
+      seal_number: editForm.seal_number.trim() || null,
       declared_value: editForm.declared_value === "" ? null : Number(editForm.declared_value),
     };
     const { data: updatedData, error: updateError } = await supabase.from("shipments").update(payload).eq("id", editing.id).select("*").single();
@@ -233,18 +269,19 @@ export default function ManagePage() {
       setSaving(false);
       return;
     }
-    if (statusChanged) {
+    if (statusChanged || checkpointChanged) {
       const { error: historyError } = await createTrackingEvent({
         shipmentId: editing.id,
         trackingNumber: editing.tracking_number,
         status: editForm.shipment_status,
         transportMode: editForm.transport_mode,
-        currentLocation: locationChanged ? editForm.current_location.trim() || automation.currentLocation : automation.currentLocation,
+        currentLocation: resolvedCurrentLocation,
         originCountry: editForm.origin_country,
         destinationCountry: editForm.destination_country,
         receiverAddress: editForm.receiver_address.trim() || null,
         estimatedDelivery: editForm.estimated_delivery || null,
         customNote: editForm.update_note.trim() || automation.customerNote,
+        routeCheckpointId: editForm.current_route_checkpoint_id || null,
       });
       if (historyError) {
         setEditErrors({ form: `Shipment updated, but history could not be saved: ${historyError.message}` });
@@ -340,17 +377,33 @@ export default function ManagePage() {
       </div>
 
       {viewing && <Modal title="Shipment Details" subtitle={viewing.tracking_number} onClose={() => setViewing(null)}>
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
-          <Detail label="Client Name" value={viewing.client_name} /><Detail label="Shipment Status" value={viewing.shipment_status} />
-          <Detail label="Origin" value={viewing.origin_country} /><Detail label="Destination" value={viewing.destination_country} />
-          <Detail label="Current Location" value={viewing.current_location} /><Detail label="Transport Mode" value={viewing.transport_mode} />
-          <Detail label="Courier" value={viewing.courier_name} /><Detail label="Estimated Delivery" value={displayDate(viewing.estimated_delivery)} />
-          <Detail label="Weight" value={viewing.weight_kg == null ? null : `${viewing.weight_kg} kg`} /><Detail label="Package Count" value={viewing.package_count?.toString()} />
-          <Detail label="Package Type" value={viewing.package_type} /><Detail label="Declared Value" value={viewing.declared_value == null ? null : `$${viewing.declared_value.toLocaleString()}`} />
-          <Detail label="Receiver Name" value={viewing.receiver_name} /><Detail label="Receiver Phone" value={viewing.receiver_phone} />
-          <div className="sm:col-span-2"><Detail label="Receiver Address" value={viewing.receiver_address} /></div>
-          <div className="sm:col-span-2"><Detail label="Item Description" value={viewing.item_description} /></div>
-          <Detail label="Created Date" value={displayDate(viewing.created_at)} />
+        <div className="grid gap-4">
+          <DetailsSection title="Shipment">
+            <Detail label="Tracking Number" value={viewing.tracking_number}/><Detail label="Shipment Status" value={viewing.shipment_status}/>
+            <Detail label="Origin" value={viewing.origin_country}/><Detail label="Destination" value={viewing.destination_country}/>
+            <Detail label="Current Location" value={viewing.current_location}/><Detail label="Transport Mode" value={viewing.transport_mode}/>
+            <Detail label="Courier" value={viewing.courier_name}/><Detail label="Estimated Delivery" value={viewing.estimated_delivery ? displayDate(viewing.estimated_delivery) : null}/>
+            <Detail label="Created Date" value={displayDate(viewing.created_at)}/>
+          </DetailsSection>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DetailsSection title="Sender / Supplier">
+              <Detail label="Name" value={viewing.client_name}/><Detail label="Company" value={viewing.client_company_name}/>
+              <Detail label="Phone" value={viewing.client_phone}/><Detail label="Email" value={viewing.client_email}/>
+              <div className="sm:col-span-2"><Detail label="Pickup / Origin Address" value={viewing.client_address}/></div>
+              <PreferenceDetail enabled={viewing.client_receive_updates}/>
+            </DetailsSection>
+            <DetailsSection title="Receiver / Client">
+              <Detail label="Name" value={viewing.receiver_name}/><Detail label="Company" value={viewing.receiver_company_name}/>
+              <Detail label="Phone" value={viewing.receiver_phone}/><Detail label="Email" value={viewing.receiver_email}/>
+              <div className="sm:col-span-2"><Detail label="Delivery Address" value={viewing.receiver_address}/></div>
+              <PreferenceDetail enabled={viewing.receiver_receive_updates}/>
+            </DetailsSection>
+          </div>
+          <DetailsSection title="Package / Service">
+            <div className="sm:col-span-2"><Detail label="Item Description" value={viewing.item_description}/></div>
+            <Detail label="Weight" value={viewing.weight_kg == null ? null : `${viewing.weight_kg} kg`}/><Detail label="Package Count" value={viewing.package_count?.toString()}/>
+            <Detail label="Package Type" value={viewing.package_type}/><Detail label="Declared Value" value={viewing.declared_value == null ? null : `$${viewing.declared_value.toLocaleString()}`}/>
+          </DetailsSection>
         </div>
         <section className="mt-6 border-t border-gray-100 pt-5">
           <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-gray-800">Shipment History</h3>
@@ -400,5 +453,10 @@ function Modal({ title, subtitle, onClose, children }: { title: string; subtitle
 }
 
 function Detail({ label, value }: { label: string; value: string | null | undefined }) {
-  return <div><dt className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</dt><dd className="mt-1.5 font-medium text-gray-800">{value || "—"}</dd></div>;
+  return <div className="min-w-0"><dt className="text-[0.62rem] font-bold uppercase tracking-[0.1em] text-gray-400">{label}</dt><dd className="mt-1 break-words text-sm font-semibold text-gray-800">{value || "Not provided"}</dd></div>;
 }
+
+function DetailsSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-xl border border-gray-100 bg-gray-50/60 p-4"><h3 className="mb-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700">{title}</h3><dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">{children}</dl></section>; }
+function PreferenceDetail({ enabled }: { enabled: boolean }) { return <div><dt className="text-[0.62rem] font-bold uppercase tracking-[0.1em] text-gray-400">Shipment Updates</dt><dd className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${enabled ? "bg-emerald-100 text-emerald-800" : "bg-gray-200 text-gray-600"}`}>{enabled ? "Enabled" : "Disabled"}</dd></div>; }
+
+function isInternationalPhone(value: string) { return /^\+[1-9]\d{6,14}$/.test(value.replace(/[\s()-]/g, "")); }

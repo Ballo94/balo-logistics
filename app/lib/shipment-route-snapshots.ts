@@ -30,7 +30,10 @@ export async function loadShipmentRouteSnapshot(shipmentId: number) {
       .maybeSingle(),
     supabase
       .from("shipment_route_stops")
-      .select("id, shipment_id, position, name, country, city, stop_type, code, operational_notes, onward_transport, estimated_duration_hours, estimated_distance_km, leg_internal_notes, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id, logistics_location:logistics_locations(country_code, location_type, secondary_code)")
+      // Snapshot rows already contain the immutable route identity. Do not join the
+      // admin-only location library here: public tracking must be able to read the
+      // copied stop names, cities, countries, codes, and ordering independently.
+      .select("id, shipment_id, position, name, country, city, stop_type, code, operational_notes, onward_transport, estimated_duration_hours, estimated_distance_km, leg_internal_notes, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id")
       .eq("shipment_id", shipmentId)
       .order("position"),
   ]);

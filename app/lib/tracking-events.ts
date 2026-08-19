@@ -12,6 +12,7 @@ export type TrackingEventInput = {
   receiverAddress?: string | null;
   estimatedDelivery?: string | null;
   customNote?: string | null;
+  routeCheckpointId?: string | null;
 };
 
 export type BuiltTrackingEvent = {
@@ -94,13 +95,13 @@ export function buildTrackingEvent(input: TrackingEventInput, timestamp = new Da
 export async function createTrackingEvent(input: TrackingEventInput) {
   const { data: latest, error: latestError } = await supabase
     .from("shipment_history")
-    .select("status")
+    .select("status, route_checkpoint_id")
     .eq("shipment_id", input.shipmentId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (latestError) return { created: false, error: latestError };
-  if (latest && normalize(latest.status) === normalize(input.status)) return { created: false, error: null };
+  if (latest && normalize(latest.status) === normalize(input.status) && (latest.route_checkpoint_id ?? null) === (input.routeCheckpointId ?? null)) return { created: false, error: null };
 
   const event = buildTrackingEvent(input);
   // tracking number and transport mode remain available through the related shipment;
@@ -110,6 +111,7 @@ export async function createTrackingEvent(input: TrackingEventInput) {
     status: event.status,
     location: event.location,
     note: event.description,
+    route_checkpoint_id: input.routeCheckpointId ?? null,
     created_at: event.timestamp,
   }]);
   return { created: !error, error };

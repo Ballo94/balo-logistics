@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import logisticsCountries from "../data/logistics-countries.json";
 import type { SavedRouteStopType } from "./saved-routes";
 
 export const LOCATION_TYPES = ["airport", "seaport", "border_post", "warehouse", "distribution_centre", "customs_facility", "rail_terminal", "inland_container_depot", "cargo_terminal", "delivery_depot", "other"] as const;
@@ -13,14 +14,14 @@ export function routeStopType(type: LogisticsLocationType): SavedRouteStopType {
 export function prioritizedLocationTypes(transportMode: string) { const preferred = PRIORITIES[transportMode.trim().toLowerCase()] ?? []; return [...preferred, ...LOCATION_TYPES.filter((type) => !preferred.includes(type))]; }
 
 export async function listLocationCountries() {
-  const { data, error } = await supabase.rpc("list_logistics_location_countries");
-  return { data: (data ?? []).map((item: { country: string; country_code: string }) => ({ country: item.country, countryCode: item.country_code })), error };
+  return { data: logisticsCountries.map((item) => ({ country: item.name, countryCode: item.code })), error: null as { message: string } | null };
 }
 
-export async function searchLocations({ query, country, city, type, types, verified, includeArchived = false, page = 0, pageSize = 20 }: { query?: string; country?: string; city?: string; type?: LogisticsLocationType | ""; types?: LogisticsLocationType[]; verified?: "verified" | "unverified" | ""; includeArchived?: boolean; page?: number; pageSize?: number }) {
+export async function searchLocations({ query, country, countryCode, city, type, types, verified, includeArchived = false, page = 0, pageSize = 20 }: { query?: string; country?: string; countryCode?: string; city?: string; type?: LogisticsLocationType | ""; types?: LogisticsLocationType[]; verified?: "verified" | "unverified" | ""; includeArchived?: boolean; page?: number; pageSize?: number }) {
   let request = supabase.from("logistics_locations").select("id, name, country, country_code, country_secondary, country_secondary_code, city, location_type, code, secondary_code, latitude, longitude, address, status, notes, source, source_reference, verified, admin_managed, created_at, updated_at", { count: "exact" });
   if (!includeArchived) request = request.eq("status", "Active");
   if (country) request = request.eq("country", country);
+  if (countryCode) request = request.eq("country_code", countryCode.toUpperCase());
   if (city) request = request.ilike("city", `%${city.trim().replaceAll("%", "")}%`);
   if (type) request = request.eq("location_type", type);
   else if (types?.length) request = request.in("location_type", types);

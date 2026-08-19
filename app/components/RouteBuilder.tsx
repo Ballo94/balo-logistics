@@ -175,7 +175,7 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
           <label><FieldLabel>Route name</FieldLabel><input value={name} onChange={(event) => { setName(event.target.value); setDirty(true); setMessage(""); }} placeholder="Johannesburg to Windhoek" className="field" /></label>
           <label><FieldLabel>Route mode</FieldLabel><select value={mode} onChange={(event) => { setMode(event.target.value as typeof mode); setDirty(true); }} className="field">{MODES.map((item) => <option key={item}>{item}</option>)}</select></label>
         </div>
-        <div className="mt-4"><LogisticsLocationSelector transportMode={mode} onAdd={addLibraryStop} /></div>
+        <div className="mt-4"><LogisticsLocationSelector key={mode} transportMode={mode} onAdd={addLibraryStop} /></div>
 
         <ol className="mt-4 grid" aria-label="Ordered route stops">
           {stops.map((stop, index) => { const meta = STOP_TYPES.find((item) => item.value === stop.stop_type)!; const role = index === 0 ? "Origin" : index === stops.length - 1 ? "Destination" : `Stop ${index + 1}`; return <li key={stop.id} className="relative pl-10 pb-3 last:pb-0" draggable onDragStart={() => setDragged(index)} onDragEnd={() => setDragged(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragged != null) move(dragged, index); setDragged(null); }}>
