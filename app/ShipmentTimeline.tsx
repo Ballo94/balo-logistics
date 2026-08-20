@@ -113,7 +113,6 @@ function JourneyLegItem({ leg, index, total, status, vesselName }: { leg: RouteL
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-slate-100 pt-2 text-[0.68rem] font-semibold text-slate-500">
         {leg.transportMode === "sea" && <LegMetric icon={<VesselIcon />} label="Vessel name" value={vesselName || "Not provided"} />}
-        <LegMetric icon={<ClockIcon />} label="Estimated duration" value={formatDuration(leg.estimatedDurationHours)} />
         <LegMetric icon={<DistanceIcon />} label="Estimated distance" value={formatDistance(leg.estimatedDistanceKm)} />
       </div>
     </div>
@@ -122,7 +121,6 @@ function JourneyLegItem({ leg, index, total, status, vesselName }: { leg: RouteL
 
 function LocationLabel({ eyebrow, name, detail }: { eyebrow: string; name: string; detail: string }) { return <div className="min-w-0"><p className="text-[0.56rem] font-black uppercase tracking-[0.13em] text-slate-400">{eyebrow}</p><p className="mt-0.5 break-words text-xs font-black leading-4 text-slate-800 sm:text-sm">{name}</p>{detail && <p className="mt-0.5 text-[0.65rem] font-medium text-slate-500">{detail}</p>}</div>; }
 function LegMetric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <span className="inline-flex items-center gap-1.5" title={label}>{icon}<span className="text-slate-400">{label}:</span><strong className="text-slate-700">{value}</strong></span>; }
-function formatDuration(hours: number | null | undefined) { if (hours == null) return "To be confirmed"; if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"}`; const days = hours / 24; return `${Number.isInteger(days) ? days : days.toFixed(1)} days`; }
 function formatDistance(distance: number | null | undefined) { return distance == null ? "To be confirmed" : `${new Intl.NumberFormat("en").format(distance)} km`; }
 function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
 
@@ -131,7 +129,6 @@ function recordedEventCountry(event: ShipmentHistory, journey: RouteJourney | nu
 function IconBase({ children, className = "h-5 w-5" }: { children: React.ReactNode; className?: string }) { return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>{children}</svg>; }
 function CheckIcon() { return <IconBase className="h-4 w-4"><path d="m5 12 4 4L19 6" /></IconBase>; }
 function PinIcon() { return <IconBase className="h-4 w-4 text-blue-600"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></IconBase>; }
-function ClockIcon() { return <IconBase className="h-3.5 w-3.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></IconBase>; }
 function DistanceIcon() { return <IconBase className="h-3.5 w-3.5"><circle cx="5" cy="17" r="2"/><circle cx="19" cy="7" r="2"/><path d="M7 17h3c4 0 2-10 6-10h1"/></IconBase>; }
 function VesselIcon() { return <IconBase className="h-3.5 w-3.5"><path d="M3 15h18l-3 5H7Z"/><path d="M7 15V8h10v7M10 8V4h4v4"/></IconBase>; }
 function TransportIcon({ mode, compact = false }: { mode: string; compact?: boolean }) {
