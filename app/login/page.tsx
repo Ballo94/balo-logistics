@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 
 import { supabase } from "../lib/supabase";
 
@@ -15,25 +15,26 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/admin");
-    });
-  }, [router]);
-
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
     setError("");
     setMessage("");
     const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    setLoading(false);
     if (signInError) {
+      setLoading(false);
       setError(signInError.message);
       return;
     }
+    const { data: { user }, error: verificationError } = await supabase.auth.getUser();
+    setLoading(false);
+    if (verificationError || !user) {
+      setError(verificationError?.message ?? "Your authenticated session could not be verified.");
+      return;
+    }
     const destination = new URLSearchParams(window.location.search).get("next");
-    router.replace(destination?.startsWith("/") ? destination : "/admin");
+    const redirectTarget = destination?.startsWith("/") ? destination : "/admin";
+    router.replace(redirectTarget);
     router.refresh();
   }
 

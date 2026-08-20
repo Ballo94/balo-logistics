@@ -43,7 +43,8 @@ export async function proxy(request: NextRequest) {
     || request.nextUrl.pathname.startsWith("/settings");
 
   if (isAdminRoute && !isAdmin) {
-    return NextResponse.redirect(new URL(customerProfile ? "/customer" : "/", request.url));
+    const target = customerProfile ? "/customer" : "/";
+    return NextResponse.redirect(new URL(target, request.url));
   }
   if (request.nextUrl.pathname.startsWith("/customer") && !customerProfile) {
     return NextResponse.redirect(new URL(isAdmin ? "/admin" : "/", request.url));

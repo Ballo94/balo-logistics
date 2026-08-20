@@ -6,6 +6,8 @@ export type RecommendationLocation = {
   verified: boolean;
 };
 
+export const COORDINATES_UNAVAILABLE_MESSAGE = "Coordinates unavailable — automatic distance and travel-time estimate cannot be calculated.";
+
 export type RouteLegRecommendation = {
   distanceKm: number | null;
   durationHours: number | null;
@@ -16,6 +18,11 @@ export type RouteLegRecommendation = {
     assumptions: Record<string, number | string>;
     unavailableReason?: string;
   };
+};
+
+type RecommendationStop = {
+  onward_transport?: string | null;
+  logistics_location?: { latitude: number | null; longitude: number | null; verified: boolean } | Array<{ latitude: number | null; longitude: number | null; verified: boolean }> | null;
 };
 
 const EARTH_RADIUS_KM = 6371;
@@ -48,14 +55,16 @@ function unavailable(reason: string): RouteLegRecommendation {
   };
 }
 
-function hasVerifiedCoordinates(location: RecommendationLocation) {
-  return location.verified
+export function hasUsableVerifiedCoordinates(location: { latitude?: unknown; longitude?: unknown; verified?: unknown } | null | undefined) {
+  return location?.verified === true
+    && typeof location.latitude === "number"
     && Number.isFinite(location.latitude)
+    && typeof location.longitude === "number"
     && Number.isFinite(location.longitude)
-    && location.latitude! >= -90
-    && location.latitude! <= 90
-    && location.longitude! >= -180
-    && location.longitude! <= 180;
+    && location.latitude >= -90
+    && location.latitude <= 90
+    && location.longitude >= -180
+    && location.longitude <= 180;
 }
 
 function round(value: number) {
@@ -67,8 +76,8 @@ export function recommendRouteLeg(
   destination: RecommendationLocation,
   transportMode: string | null | undefined,
 ): RouteLegRecommendation {
-  if (!hasVerifiedCoordinates(origin) || !hasVerifiedCoordinates(destination)) {
-    return unavailable("Both route stops require verified coordinates.");
+  if (!hasUsableVerifiedCoordinates(origin) || !hasUsableVerifiedCoordinates(destination)) {
+    return unavailable(COORDINATES_UNAVAILABLE_MESSAGE);
   }
 
   const mode = transportMode?.trim().toLowerCase();
@@ -106,6 +115,51 @@ export function recommendRouteLeg(
   }
 
   return unavailable(`Transport mode ${transportMode || "not provided"} is not supported by the Phase 1 estimator.`);
+}
+
+function recommendationLocation(stop: RecommendationStop) {
+  return Array.isArray(stop.logistics_location) ? stop.logistics_location[0] ?? null : stop.logistics_location ?? null;
+}
+
+export function recommendRouteStopLeg(origin: RecommendationStop, destination: RecommendationStop, selectedMode?: string | null) {
+  const originLocation = recommendationLocation(origin);
+  const destinationLocation = recommendationLocation(destination);
+  const originCoordinates = { latitude: originLocation?.latitude ?? null, longitude: originLocation?.longitude ?? null, verified: originLocation?.verified ?? false };
+  const destinationCoordinates = { latitude: destinationLocation?.latitude ?? null, longitude: destinationLocation?.longitude ?? null, verified: destinationLocation?.verified ?? false };
+  const transportMode = selectedMode === undefined ? origin.onward_transport : selectedMode;
+  if (process.env.NODE_ENV === "development") console.debug("[BALO ROUTE DEBUG] RECOMMENDATION ENGINE INPUT", { originCoordinates, destinationCoordinates, transportMode });
+  const recommendation = recommendRouteLeg(originCoordinates, destinationCoordinates, transportMode);
+  if (process.env.NODE_ENV === "development") console.debug("[BALO ROUTE DEBUG] RECOMMENDATION ENGINE RESULT", {
+    recommendation,
+    calculatedDistance: recommendation.distanceKm,
+    calculatedDuration: recommendation.durationHours,
+    confidence: recommendation.confidence,
+    unavailableReason: recommendation.metadata.unavailableReason ?? null,
+  });
+  return recommendation;
+}
+
+export function applyRouteRecommendations<T extends RecommendationStop>(stops: T[], calculatedAt = new Date().toISOString()) {
+  return stops.map((stop, index) => {
+    if (index === stops.length - 1) return stop;
+    const recommendation = recommendRouteStopLeg(stop, stops[index + 1]);
+    const recommendedStop = {
+      ...stop,
+      system_recommended_distance_km: recommendation.distanceKm,
+      system_recommended_duration_hours: recommendation.durationHours,
+      system_recommendation_confidence: recommendation.confidence,
+      system_recommendation_metadata: recommendation.metadata,
+      system_recommendation_calculated_at: calculatedAt,
+    };
+    if (process.env.NODE_ENV === "development" && index === 0) console.debug("[BALO ROUTE DEBUG] SHARED STATE AFTER PROPAGATION", {
+      legIndex: index,
+      systemRecommendedDurationHours: recommendedStop.system_recommended_duration_hours,
+      systemRecommendedDistanceKm: recommendedStop.system_recommended_distance_km,
+      administratorDurationHours: "estimated_duration_hours" in recommendedStop ? recommendedStop.estimated_duration_hours ?? null : null,
+      administratorDistanceKm: "estimated_distance_km" in recommendedStop ? recommendedStop.estimated_distance_km ?? null : null,
+    });
+    return recommendedStop;
+  });
 }
 
 export function effectiveEstimate(adminValue: number | null | undefined, systemValue: number | null | undefined) {
