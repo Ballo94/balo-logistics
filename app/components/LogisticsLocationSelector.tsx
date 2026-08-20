@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { LOCATION_TYPE_LABELS, listLocationCountries, locationTypeLabel, prioritizedLocationTypes, routeStopType, searchLocations, type LogisticsLocationRecord, type LogisticsLocationType } from "../lib/logistics-location-library";
 import { COORDINATES_UNAVAILABLE_MESSAGE, hasUsableVerifiedCoordinates } from "../lib/route-journey-estimates";
 import type { EditableRouteStop } from "../lib/saved-routes";
+import SearchableCountrySelect from "./SearchableCountrySelect";
 
 const TRANSPORT_TYPES: Record<string, LogisticsLocationType[]> = {
   Air: ["airport", "cargo_terminal", "warehouse", "distribution_centre"],
@@ -62,7 +63,7 @@ export default function LogisticsLocationSelector({ transportMode, onAdd }: { tr
     <div><p className="text-[0.6rem] font-black uppercase tracking-[0.15em] text-blue-600">Production location library</p><h4 id="add-location-title" className="mt-1 text-sm font-black text-[#071a33]">+ Add verified stop</h4><p className="mt-1 text-xs text-slate-500">Search by official code, city, country, facility type, or any part of the location name.</p></div>
     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <label><Label>Transport mode</Label><select value={transportFilter} onChange={(event) => { setTransportFilter(event.target.value); setType(""); setSelected(null); }} className="field"><option>All</option><option>Air</option><option>Sea</option><option>Road</option></select></label>
-      <label><Label>Country</Label><select value={countryCode} onChange={(event) => { setCountryCode(event.target.value); setSelected(null); }} className="field"><option value="">All countries</option>{countries.map((item) => <option key={item.countryCode} value={item.countryCode}>{countryFlag(item.countryCode)} {item.country}</option>)}</select></label>
+      <label><Label>Country</Label><SearchableCountrySelect countries={countries} value={countryCode} onChange={(nextCountryCode) => { setCountryCode(nextCountryCode); setSelected(null); }} /></label>
       <label><Label>Location type</Label><select value={type} onChange={(event) => { setType(event.target.value as LogisticsLocationType | ""); setSelected(null); }} className="field"><option value="">All location types</option>{types.map((item) => <option key={item} value={item}>{LOCATION_TYPE_LABELS[item]}</option>)}</select></label>
       <label><Label>Search locations</Label><input value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="JNB, Walvis Bay, warehouse..." className="field" autoComplete="off" /></label>
     </div>

@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { buildJourneyFromSavedRoute, loadRouteTemplates, loadSavedRoute, routeLocationMetadata, type EditableRouteStop, type SavedRouteStop, type SavedRouteStopType, type SavedRouteTemplate } from "../lib/saved-routes";
 import type { OperationsAutomation } from "../lib/operations-automation";
 import type { RouteJourney } from "../lib/route-intelligence";
 import RouteJourneyPreview from "./RouteJourneyPreview";
 import LogisticsLocationSelector, { countryFlag } from "./LogisticsLocationSelector";
+import { reconcileInferredOnwardTransport } from "../lib/route-onward-transport";
 
 const STOP_TYPES: Array<{ value: SavedRouteStopType; label: string; short: string }> = [
   { value: "airport", label: "Airport", short: "AP" },
@@ -29,6 +30,9 @@ type Props = {
   onJourneyChange?: (journey: RouteJourney | null) => void;
   preview?: OperationsAutomation | null;
   compact?: boolean;
+  showTemplateLibrary?: boolean;
+  transportMode?: SavedRouteTemplate["transport_mode"];
+  showModeSelector?: boolean;
 };
 
 function persistedStops(routeId: string, stops: EditableRouteStop[]): SavedRouteStop[] {
@@ -63,7 +67,7 @@ function validateRoute(name: string, stops: EditableRouteStop[]) {
   return "";
 }
 
-export default function RouteBuilder({ value, onChange, onJourneyChange, preview, compact = false }: Props) {
+export default function RouteBuilder({ value, onChange, onJourneyChange, preview, compact = false, showTemplateLibrary = true, transportMode, showModeSelector = true }: Props) {
   const [templates, setTemplates] = useState<SavedRouteTemplate[]>([]);
   const [routeId, setRouteId] = useState<string | null>(value);
   const [name, setName] = useState("");
@@ -73,12 +77,15 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
+  const automaticallyManagedIds = useRef(new Set<string>());
+  const inferenceEligibleIds = useRef(new Set<string>());
+  const activeMode = transportMode ?? mode;
 
   const refreshTemplates = useCallback(async () => {
     const { data } = await loadRouteTemplates();
     setTemplates((data ?? []) as SavedRouteTemplate[]);
   }, []);
-  const journey = useMemo(() => stops.length >= 2 ? buildJourneyFromSavedRoute({ id: routeId ?? "draft-route", name: name || "Unsaved Route", transport_mode: mode }, persistedStops(routeId ?? "draft-route", stops)) : null, [mode, name, routeId, stops]);
+  const journey = useMemo(() => stops.length >= 2 ? buildJourneyFromSavedRoute({ id: routeId ?? "draft-route", name: name || "Unsaved Route", transport_mode: activeMode }, persistedStops(routeId ?? "draft-route", stops)) : null, [activeMode, name, routeId, stops]);
   const validation = useMemo(() => validateRoute(name, stops), [name, stops]);
 
   useEffect(() => {
@@ -88,12 +95,19 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
   }, [refreshTemplates]);
   useEffect(() => { onJourneyChange?.(journey); }, [journey, onJourneyChange]);
   useEffect(() => {
+    setStops((current) => {
+      const reconciled = reconcileInferredOnwardTransport(current, activeMode, automaticallyManagedIds.current, inferenceEligibleIds.current);
+      automaticallyManagedIds.current = reconciled.automaticallyManagedIds;
+      return reconciled.stops;
+    });
+  }, [activeMode]);
+  useEffect(() => {
     if (!value) return;
     let active = true;
     void loadSavedRoute(value).then(({ template, stops: savedStops }) => {
       if (!active || !template) return;
       setRouteId(template.id); setName(template.name); setMode(template.transport_mode);
-      setStops(savedStops.map(editableStop));
+      automaticallyManagedIds.current.clear(); inferenceEligibleIds.current.clear(); setStops(savedStops.map(editableStop));
       setDirty(false);
     });
     return () => { active = false; };
@@ -104,15 +118,18 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
     const saved = await loadSavedRoute(id);
     if (!saved.template) { setMessage(saved.error?.message ?? "Unable to load this route."); return; }
     setRouteId(saved.template.id); setName(saved.template.name); setMode(saved.template.transport_mode);
-    setStops(saved.stops.map(editableStop));
+    automaticallyManagedIds.current.clear(); inferenceEligibleIds.current.clear(); setStops(saved.stops.map(editableStop));
     setDirty(false);
     setMessage(value === id ? "Assigned route loaded." : "Route loaded. Review it, then assign it to this shipment.");
   }
 
-  function startNewRoute() { setRouteId(null); setName(""); setMode("Air"); setStops([]); setDirty(true); setMessage("New route started. Add the origin first and destination last."); }
-  function updateStop(index: number, patch: Partial<EditableRouteStop>) { setStops((current) => current.map((stop, stopIndex) => stopIndex === index ? { ...stop, ...patch } : stop)); setDirty(true); setMessage(""); }
-  function move(from: number, to: number) { if (from === to || to < 0 || to >= stops.length) return; setStops((current) => { const next = [...current]; const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; }); setDirty(true); setMessage(""); }
-  function addLibraryStop(stop: EditableRouteStop) { setStops((current) => [...current, stop]); setDirty(true); setMessage(""); }
+  function startNewRoute() { setRouteId(null); setName(""); setMode("Air"); automaticallyManagedIds.current.clear(); inferenceEligibleIds.current.clear(); setStops([]); setDirty(true); onChange(null); setMessage("New route started. Add the origin first and destination last."); }
+  function reconcileStops(next: EditableRouteStop[]) { const reconciled = reconcileInferredOnwardTransport(next, activeMode, automaticallyManagedIds.current, inferenceEligibleIds.current); automaticallyManagedIds.current = reconciled.automaticallyManagedIds; return reconciled.stops; }
+  function updateStop(index: number, patch: Partial<EditableRouteStop>) { setStops((current) => reconcileStops(current.map((stop, stopIndex) => stopIndex === index ? { ...stop, ...patch } : stop))); setDirty(true); setMessage(""); }
+  function setManualOnwardTransport(index: number, onwardTransport: EditableRouteStop["onward_transport"]) { const stop = stops[index]; if (stop) { automaticallyManagedIds.current.delete(stop.id); inferenceEligibleIds.current.delete(stop.id); } updateStop(index, { onward_transport: onwardTransport }); }
+  function move(from: number, to: number) { if (from === to || to < 0 || to >= stops.length) return; setStops((current) => { const next = [...current]; const [item] = next.splice(from, 1); next.splice(to, 0, item); return reconcileStops(next); }); setDirty(true); setMessage(""); }
+  function removeStop(index: number) { setStops((current) => { const removed = current[index]; if (removed) { automaticallyManagedIds.current.delete(removed.id); inferenceEligibleIds.current.delete(removed.id); } return reconcileStops(current.filter((_, stopIndex) => stopIndex !== index)); }); setDirty(true); }
+  function addLibraryStop(stop: EditableRouteStop) { inferenceEligibleIds.current.add(stop.id); setStops((current) => reconcileStops([...current, stop])); setDirty(true); setMessage(""); }
 
   async function persistRoute(forceNew = false) {
     const issue = validateRoute(name, stops);
@@ -121,7 +138,7 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
     let savedId = forceNew ? null : routeId;
     const routeName = forceNew ? `${name.trim()} Copy` : name.trim();
     if (!savedId) {
-      const { data, error } = await supabase.from("route_templates").insert([{ name: routeName, transport_mode: mode }]).select("id").single();
+      const { data, error } = await supabase.from("route_templates").insert([{ name: routeName, transport_mode: activeMode }]).select("id").single();
       if (error) { setMessage(error.message); setSaving(false); return null; }
       savedId = data.id as string;
     } else {
@@ -130,12 +147,12 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
       if (assignmentError) { setMessage(assignmentError.message); setSaving(false); return null; }
       if ((count ?? 0) > 0) {
         const currentTemplate = templates.find((template) => template.id === originalId);
-        const { data, error } = await supabase.from("route_templates").insert([{ name: routeName, transport_mode: mode, estimated_transit_days: currentTemplate?.estimated_transit_days ?? null, route_status: currentTemplate?.route_status ?? "Active", notes: currentTemplate?.notes ?? null, library_root_id: currentTemplate?.library_root_id ?? originalId, version: (currentTemplate?.version ?? 1) + 1, is_current: true }]).select("id").single();
+        const { data, error } = await supabase.from("route_templates").insert([{ name: routeName, transport_mode: activeMode, estimated_transit_days: currentTemplate?.estimated_transit_days ?? null, route_status: currentTemplate?.route_status ?? "Active", notes: currentTemplate?.notes ?? null, library_root_id: currentTemplate?.library_root_id ?? originalId, version: (currentTemplate?.version ?? 1) + 1, is_current: true }]).select("id").single();
         if (error) { setMessage(error.message); setSaving(false); return null; }
         savedId = data.id as string;
         await supabase.from("route_templates").update({ is_current: false }).eq("id", originalId);
       } else {
-        const { error } = await supabase.from("route_templates").update({ name: routeName, transport_mode: mode, updated_at: new Date().toISOString() }).eq("id", originalId);
+        const { error } = await supabase.from("route_templates").update({ name: routeName, transport_mode: activeMode, updated_at: new Date().toISOString() }).eq("id", originalId);
         if (error) { setMessage(error.message); setSaving(false); return null; }
         const { error: deleteError } = await supabase.from("route_stops").delete().eq("route_template_id", originalId);
         if (deleteError) { setMessage(deleteError.message); setSaving(false); return null; }
@@ -188,19 +205,19 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
     <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,.75fr)]">
       <div className="min-w-0">
         <div className="grid gap-3 sm:grid-cols-2">
-          <label><FieldLabel>Route template library</FieldLabel><select value={routeId ?? ""} onChange={(event) => void loadTemplate(event.target.value)} className="field"><option value="">Create a new route</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}{value === template.id ? " — Assigned" : ""}</option>)}</select></label>
+          {showTemplateLibrary && <label><FieldLabel>Route template library</FieldLabel><select value={routeId ?? ""} onChange={(event) => void loadTemplate(event.target.value)} className="field"><option value="">Create a new route</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}{value === template.id ? " — Assigned" : ""}</option>)}</select></label>}
           <label><FieldLabel>Route name</FieldLabel><input value={name} onChange={(event) => { setName(event.target.value); setDirty(true); setMessage(""); }} placeholder="Johannesburg to Windhoek" className="field" /></label>
-          <label><FieldLabel>Route mode</FieldLabel><select value={mode} onChange={(event) => { setMode(event.target.value as typeof mode); setDirty(true); }} className="field">{MODES.map((item) => <option key={item}>{item}</option>)}</select></label>
+          {showModeSelector && <label><FieldLabel>Route mode</FieldLabel><select value={activeMode} onChange={(event) => { setMode(event.target.value as typeof mode); setDirty(true); }} className="field">{MODES.map((item) => <option key={item}>{item}</option>)}</select></label>}
         </div>
-        <div className="mt-4"><LogisticsLocationSelector key={mode} transportMode={mode} onAdd={addLibraryStop} /></div>
+        <div className="mt-4"><LogisticsLocationSelector key={activeMode} transportMode={activeMode} onAdd={addLibraryStop} /></div>
 
         <ol className="mt-4 grid" aria-label="Ordered route stops">
           {stops.map((stop, index) => { const meta = STOP_TYPES.find((item) => item.value === stop.stop_type)!; const role = index === 0 ? "Origin" : index === stops.length - 1 ? "Destination" : `Stop ${index + 1}`; return <li key={stop.id} className="relative pl-10 pb-3 last:pb-0" draggable onDragStart={() => setDragged(index)} onDragEnd={() => setDragged(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragged != null) move(dragged, index); setDragged(null); }}>
             {index < stops.length - 1 && <span aria-hidden="true" className="absolute bottom-0 left-[1.15rem] top-10 border-l-2 border-dashed border-blue-200" />}
             <span className="absolute left-0 top-3 grid h-9 w-9 place-items-center rounded-xl border-4 border-white bg-blue-600 text-[0.55rem] font-black text-white shadow-md">{meta.short}</span>
             <article className={`rounded-xl border bg-white p-3 shadow-sm transition ${dragged === index ? "border-blue-400 opacity-60" : "border-slate-200 hover:border-blue-200"}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><button type="button" aria-label={`Drag ${role}`} title="Drag to reorder" className="cursor-grab rounded-lg bg-slate-100 px-2 py-1 text-[0.65rem] font-black text-slate-500 active:cursor-grabbing">DRAG</button><div><p className="text-[0.58rem] font-black uppercase tracking-[0.13em] text-blue-600">{role} · {meta.label}</p><p className="text-xs font-black text-slate-800">{countryFlag(routeLocationMetadata(stop)?.country_code)} {stop.name || meta.label}{stop.code ? ` (${stop.code})` : ""}</p><p className="mt-0.5 text-[0.62rem] font-semibold text-slate-500">{stop.city}, {stop.country}</p></div></div><div className="flex gap-1"><MiniButton label="Move up" disabled={index === 0} onClick={() => move(index, index - 1)}>Up</MiniButton><MiniButton label="Move down" disabled={index === stops.length - 1} onClick={() => move(index, index + 1)}>Down</MiniButton><MiniButton label={`Remove ${role}`} danger onClick={() => { setStops((current) => current.filter((_, stopIndex) => stopIndex !== index)); setDirty(true); }}>Remove</MiniButton></div></div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><label><FieldLabel>Type</FieldLabel><select value={stop.stop_type} onChange={(event) => updateStop(index, { stop_type: event.target.value as SavedRouteStopType })} className="field">{STOP_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="lg:col-span-2"><FieldLabel>Location name</FieldLabel><input value={stop.name} onChange={(event) => updateStop(index, { name: event.target.value })} className="field" /></label><label><FieldLabel>Code / reference</FieldLabel><input value={stop.code ?? ""} onChange={(event) => updateStop(index, { code: event.target.value })} placeholder="JNB" className="field" /></label><label><FieldLabel>City</FieldLabel><input value={stop.city} onChange={(event) => updateStop(index, { city: event.target.value })} className="field" /></label><label><FieldLabel>Country</FieldLabel><input value={stop.country} onChange={(event) => updateStop(index, { country: event.target.value })} className="field" /></label><label><FieldLabel>Next transport leg</FieldLabel><select value={stop.onward_transport ?? ""} disabled={index === stops.length - 1} onChange={(event) => updateStop(index, { onward_transport: event.target.value as EditableRouteStop["onward_transport"] })} className="field disabled:bg-slate-100"><option value="">Final destination</option><option>Air</option><option>Sea</option><option>Road</option></select></label><label><FieldLabel>Operational notes</FieldLabel><input value={stop.operational_notes ?? ""} onChange={(event) => updateStop(index, { operational_notes: event.target.value })} placeholder="Optional" className="field" /></label></div>
+              <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><button type="button" aria-label={`Drag ${role}`} title="Drag to reorder" className="cursor-grab rounded-lg bg-slate-100 px-2 py-1 text-[0.65rem] font-black text-slate-500 active:cursor-grabbing">DRAG</button><div><p className="text-[0.58rem] font-black uppercase tracking-[0.13em] text-blue-600">{role} · {meta.label}</p><p className="text-xs font-black text-slate-800">{countryFlag(routeLocationMetadata(stop)?.country_code)} {stop.name || meta.label}{stop.code ? ` (${stop.code})` : ""}</p><p className="mt-0.5 text-[0.62rem] font-semibold text-slate-500">{stop.city}, {stop.country}</p></div></div><div className="flex gap-1"><MiniButton label="Move up" disabled={index === 0} onClick={() => move(index, index - 1)}>Up</MiniButton><MiniButton label="Move down" disabled={index === stops.length - 1} onClick={() => move(index, index + 1)}>Down</MiniButton><MiniButton label={`Remove ${role}`} danger onClick={() => removeStop(index)}>Remove</MiniButton></div></div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><label><FieldLabel>Type</FieldLabel><select value={stop.stop_type} onChange={(event) => updateStop(index, { stop_type: event.target.value as SavedRouteStopType })} className="field">{STOP_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="lg:col-span-2"><FieldLabel>Location name</FieldLabel><input value={stop.name} onChange={(event) => updateStop(index, { name: event.target.value })} className="field" /></label><label><FieldLabel>Code / reference</FieldLabel><input value={stop.code ?? ""} onChange={(event) => updateStop(index, { code: event.target.value })} placeholder="JNB" className="field" /></label><label><FieldLabel>City</FieldLabel><input value={stop.city} onChange={(event) => updateStop(index, { city: event.target.value })} className="field" /></label><label><FieldLabel>Country</FieldLabel><input value={stop.country} onChange={(event) => updateStop(index, { country: event.target.value })} className="field" /></label><label><FieldLabel>Next transport leg</FieldLabel><select value={stop.onward_transport ?? ""} disabled={index === stops.length - 1} onChange={(event) => setManualOnwardTransport(index, (event.target.value || null) as EditableRouteStop["onward_transport"])} className="field disabled:bg-slate-100"><option value="">Final destination</option><option>Air</option><option>Sea</option><option>Road</option></select>{index < stops.length - 1 && automaticallyManagedIds.current.has(stop.id) && <span className="mt-1 block text-[0.6rem] font-semibold text-blue-600">Suggested from this route</span>}</label><label><FieldLabel>Operational notes</FieldLabel><input value={stop.operational_notes ?? ""} onChange={(event) => updateStop(index, { operational_notes: event.target.value })} placeholder="Optional" className="field" /></label></div>
             </article>
           </li>; })}
         </ol>
@@ -219,7 +236,7 @@ export default function RouteBuilder({ value, onChange, onJourneyChange, preview
       </div>
 
       <aside className="min-w-0 xl:sticky xl:top-24 xl:h-fit">
-        <RouteJourneyPreview journey={journey} hasLocations={stops.length >= 2} compact={compact} currentIndex={preview?.checkpointIndex} progress={preview?.progress} currentStop={preview?.currentLocation} nextStop={preview?.nextLocation} transportSummary={mode} />
+        <RouteJourneyPreview journey={journey} hasLocations={stops.length >= 2} compact={compact} currentIndex={preview?.checkpointIndex} progress={preview?.progress} currentStop={preview?.currentLocation} nextStop={preview?.nextLocation} transportSummary={activeMode} />
       </aside>
     </div>
   </section>;
