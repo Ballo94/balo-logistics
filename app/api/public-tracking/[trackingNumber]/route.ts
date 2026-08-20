@@ -37,7 +37,7 @@ export async function GET(_request: Request, context: { params: Promise<{ tracki
     const [historyResult, snapshotResult, snapshotStopsResult, documentsResult, communicationsResult] = await Promise.all([
       supabase.from("shipment_history").select("status, location, created_at").eq("shipment_id", shipmentId).order("created_at", { ascending: true }),
       supabase.from("shipment_route_snapshots").select("shipment_id, route_template_id, template_name, transport_mode, template_version").eq("shipment_id", shipmentId).maybeSingle(),
-      supabase.from("shipment_route_stops").select("id, position, name, country, city, stop_type, code, onward_transport, estimated_distance_km, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id").eq("shipment_id", shipmentId).order("position"),
+      supabase.from("shipment_route_stops").select("id, position, name, country, city, stop_type, code, onward_transport, estimated_distance_km, system_recommended_distance_km, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id").eq("shipment_id", shipmentId).order("position"),
       supabase.from("shipment_documents").select("id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at").eq("shipment_id", shipmentId).eq("visible_to_customer", true).order("uploaded_at", { ascending: false }).order("id", { ascending: false }),
       supabase.from("shipment_communications").select("id, title, message, type, created_at, visible_to_customer").eq("shipment_id", shipmentId).eq("visible_to_customer", true).order("created_at", { ascending: false }).order("id", { ascending: false }),
     ]);
@@ -75,7 +75,7 @@ async function loadLegacyJourney(supabase: AdminClient, routeTemplateId: string 
   if (!routeTemplateId) return null;
   const [templateResult, stopsResult] = await Promise.all([
     supabase.from("route_templates").select("id, name, transport_mode, estimated_transit_days, route_status, version").eq("id", routeTemplateId).maybeSingle(),
-    supabase.from("route_stops").select("id, route_template_id, position, name, country, city, stop_type, code, onward_transport, estimated_distance_km, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id").eq("route_template_id", routeTemplateId).order("position"),
+    supabase.from("route_stops").select("id, route_template_id, position, name, country, city, stop_type, code, onward_transport, estimated_distance_km, system_recommended_distance_km, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id").eq("route_template_id", routeTemplateId).order("position"),
   ]);
   if (templateResult.error || stopsResult.error || !templateResult.data) return null;
   const template = templateResult.data as RouteTemplateRecord;

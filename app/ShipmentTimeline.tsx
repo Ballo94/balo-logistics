@@ -33,9 +33,9 @@ export default function ShipmentTimeline({ state, journey, route, history, origi
     && !recordedCanonicalStatuses.has(canonicalizeShipmentStatus(milestone.label)));
   const recordedThroughIndex = recordedIndexes.length ? Math.max(...recordedIndexes) : -1;
 
-  if (journey?.legs.length) {
+  if (journey?.legs.length && route) {
     const activeLegIndex = getActiveLegIndex(journey, currentIndex, state.canonicalStatus === "delivered");
-    return <div className="grid gap-3"><RecordedHistory history={chronological} currentStatus={state.displayStatus} originCountry={originCountry} destinationCountry={destinationCountry} journey={journey}/><JourneyLegTimeline journey={journey} activeLegIndex={activeLegIndex} completedCheckpointIndex={recordedThroughIndex} delivered={state.canonicalStatus === "delivered"} vesselName={vesselName} /></div>;
+    return <div className="grid gap-3"><RecordedHistory history={chronological} currentStatus={state.displayStatus} originCountry={originCountry} destinationCountry={destinationCountry} journey={journey}/><JourneyLegTimeline journey={journey} route={route} activeLegIndex={activeLegIndex} completedCheckpointIndex={recordedThroughIndex} delivered={state.canonicalStatus === "delivered"} vesselName={vesselName} /></div>;
   }
 
   return <section className="rounded-[1.25rem] border border-slate-200/70 bg-white p-3.5 shadow-[0_16px_42px_-27px_rgba(15,23,42,0.36)]" aria-labelledby="shipment-progress-title">
@@ -73,7 +73,8 @@ function getActiveLegIndex(journey: RouteJourney, currentCheckpointIndex: number
   return index < 0 ? Math.max(0, journey.legs.length - 1) : index;
 }
 
-function JourneyLegTimeline({ journey, activeLegIndex, completedCheckpointIndex, delivered, vesselName }: { journey: RouteJourney; activeLegIndex: number; completedCheckpointIndex: number; delivered: boolean; vesselName?: string | null }) {
+function JourneyLegTimeline({ journey, route, activeLegIndex, completedCheckpointIndex, delivered, vesselName }: { journey: RouteJourney; route: RouteJourneyPresentation; activeLegIndex: number; completedCheckpointIndex: number; delivered: boolean; vesselName?: string | null }) {
+  const orderedLocations = route.orderedStops;
   return <section className="overflow-hidden rounded-[1.25rem] border border-slate-200/70 bg-white shadow-[0_16px_42px_-27px_rgba(15,23,42,0.38)]" aria-labelledby="shipment-progress-title">
     <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-blue-50/70 px-4 py-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -86,7 +87,8 @@ function JourneyLegTimeline({ journey, activeLegIndex, completedCheckpointIndex,
         const checkpointPositions = new Map(journey.checkpoints.map((checkpoint, checkpointIndex) => [checkpoint.id, checkpointIndex]));
         const legFinalCheckpoint = Math.max(...leg.checkpointIds.map((id) => checkpointPositions.get(id) ?? -1));
         const status = index === activeLegIndex && !delivered ? "current" : delivered || legFinalCheckpoint <= completedCheckpointIndex ? "completed" : "pending";
-        return <JourneyLegItem key={leg.id} leg={leg} index={index} total={journey.legs.length} status={status} vesselName={vesselName} />;
+        const chainedLeg = { ...leg, origin: orderedLocations[index] ?? leg.origin, destination: orderedLocations[index + 1] ?? leg.destination };
+        return <JourneyLegItem key={leg.id} leg={chainedLeg} index={index} total={journey.legs.length} status={status} vesselName={vesselName} />;
       })}
     </ol>
   </section>;
@@ -107,13 +109,14 @@ function JourneyLegItem({ leg, index, total, status, vesselName }: { leg: RouteL
         <span className={`text-[0.6rem] font-extrabold uppercase tracking-[0.12em] ${current ? "text-blue-700" : completed ? "text-[#8a6800]" : "text-slate-400"}`}>{current ? "Current leg" : completed ? "Completed" : "Pending"}</span>
       </div>
       <div className="mt-2 grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-        <LocationLabel eyebrow="Origin" name={leg.origin.name} detail={[leg.origin.city, leg.origin.country].filter(Boolean).join(", ")} />
+        <LocationLabel eyebrow={index === 0 ? "Origin" : "Transit departure"} name={leg.origin.name} detail={[leg.origin.city, leg.origin.country].filter(Boolean).join(", ")} />
         <span aria-hidden="true" className={`hidden h-px w-8 sm:block ${completed ? "bg-yellow-400" : current ? "bg-blue-400" : "bg-slate-200"}`} />
-        <LocationLabel eyebrow="Destination" name={leg.destination.name} detail={[leg.destination.city, leg.destination.country].filter(Boolean).join(", ")} />
+        <LocationLabel eyebrow={index === total - 1 ? "Final destination" : "Transit arrival"} name={leg.destination.name} detail={[leg.destination.city, leg.destination.country].filter(Boolean).join(", ")} />
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-slate-100 pt-2 text-[0.68rem] font-semibold text-slate-500">
         {leg.transportMode === "sea" && <LegMetric icon={<VesselIcon />} label="Vessel name" value={vesselName || "Not provided"} />}
         <LegMetric icon={<DistanceIcon />} label="Estimated distance" value={formatDistance(leg.estimatedDistanceKm)} />
+        <LegMetric icon={<ClockIcon />} label="Travel timing" value="To be confirmed" />
       </div>
     </div>
   </li>;
@@ -131,6 +134,7 @@ function CheckIcon() { return <IconBase className="h-4 w-4"><path d="m5 12 4 4L1
 function PinIcon() { return <IconBase className="h-4 w-4 text-blue-600"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2"/></IconBase>; }
 function DistanceIcon() { return <IconBase className="h-3.5 w-3.5"><circle cx="5" cy="17" r="2"/><circle cx="19" cy="7" r="2"/><path d="M7 17h3c4 0 2-10 6-10h1"/></IconBase>; }
 function VesselIcon() { return <IconBase className="h-3.5 w-3.5"><path d="M3 15h18l-3 5H7Z"/><path d="M7 15V8h10v7M10 8V4h4v4"/></IconBase>; }
+function ClockIcon() { return <IconBase className="h-3.5 w-3.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></IconBase>; }
 function TransportIcon({ mode, compact = false }: { mode: string; compact?: boolean }) {
   const className = compact ? "h-3 w-3" : "h-5 w-5";
   const normalized = mode.toLowerCase();

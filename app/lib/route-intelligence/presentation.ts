@@ -1,11 +1,16 @@
 import { canonicalizeShipmentStatus, normalizeShipmentStatus, type CanonicalShipmentStatus, type ShipmentState } from "../shipment-state";
-import type { CheckpointKind, RouteCheckpoint, RouteJourney } from "./types";
+import type { CheckpointKind, LogisticsLocation, RouteCheckpoint, RouteJourney } from "./types";
 
 export type RouteJourneyPresentation = {
   journey: RouteJourney;
   currentIndex: number;
   currentCheckpoint: RouteCheckpoint;
   nextCheckpoint: RouteCheckpoint | null;
+  orderedStops: LogisticsLocation[];
+  currentStop: LogisticsLocation;
+  currentStopIndex: number;
+  destinationStop: LogisticsLocation;
+  completedStopIndexes: number[];
   currentLocation: string;
   nextStop: string;
   currentStage: string;
@@ -75,22 +80,36 @@ function nextMeaningfulCheckpoint(journey: RouteJourney, currentIndex: number) {
     ?? null;
 }
 
-function nextVerifiedRouteStop(journey: RouteJourney, currentCheckpoint: RouteCheckpoint) {
-  if (currentCheckpoint.kind === "delivered") return null;
-  if (["shipment_created", "collected", "origin_warehouse"].includes(currentCheckpoint.kind)) return journey.origin;
+function sameRouteLocation(left: RouteJourney["origin"], right: RouteJourney["origin"]) {
+  if (left.id === right.id) return true;
+  if (left.code && right.code && normalizeLocation(left.code) === normalizeLocation(right.code)) return true;
+  return normalizeLocation(left.name) === normalizeLocation(right.name)
+    && normalizeLocation(left.city) === normalizeLocation(right.city)
+    && normalizeLocation(left.country) === normalizeLocation(right.country);
+}
+
+function routeStopProgress(journey: RouteJourney, currentCheckpoint: RouteCheckpoint, realCurrentLocation?: string | null) {
+  if (currentCheckpoint.kind === "delivered") return { current: journey.destination, next: null };
   const locations = [journey.origin, ...journey.transitStops, journey.destination];
-  const currentLocationIndex = locations.findIndex((location) => location.id === currentCheckpoint.location.id);
-  return locations[currentLocationIndex + 1] ?? null;
+  const checkpointRouteStop = locations.find((location) => location.id === currentCheckpoint.location.id) ?? null;
+  const recordedRouteStop = realCurrentLocation?.trim() ? savedRouteLocation(journey, realCurrentLocation) : null;
+  const current = checkpointRouteStop ?? recordedRouteStop ?? journey.origin;
+  const currentLocationIndex = locations.findIndex((location) => location.id === current.id);
+  const next = currentLocationIndex < 0 ? null : locations.slice(currentLocationIndex + 1).find((location) => !sameRouteLocation(location, current)) ?? null;
+  return { current, next };
 }
 
 function normalizeLocation(value: string) {
   return value.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").replace(/\s+/g, " ");
 }
 
-function isSavedRouteLocation(journey: RouteJourney, value: string) {
+function savedRouteLocation(journey: RouteJourney, value: string) {
   const normalized = normalizeLocation(value);
-  return [journey.origin, ...journey.transitStops, journey.destination]
-    .some((location) => normalizeLocation(location.name) === normalized);
+  const locations = [journey.origin, ...journey.transitStops, journey.destination];
+  return locations.find((location) => location.code && normalizeLocation(location.code) === normalized)
+    ?? locations.find((location) => normalizeLocation(location.name) === normalized)
+    ?? locations.find((location) => [location.city, `${location.city}, ${location.country}`, `${location.name}, ${location.city}, ${location.country}`].some((candidate) => normalizeLocation(candidate) === normalized))
+    ?? null;
 }
 
 function transitLabel(checkpoint: RouteCheckpoint) {
@@ -100,20 +119,23 @@ function transitLabel(checkpoint: RouteCheckpoint) {
   return "In Transit";
 }
 
-function currentLocationFor(journey: RouteJourney, checkpoint: RouteCheckpoint, nextRouteStop: RouteJourney["destination"] | null, state: ShipmentState, realCurrentLocation?: string | null) {
+function currentLocationFor(journey: RouteJourney, checkpoint: RouteCheckpoint, currentRouteStop: LogisticsLocation, nextRouteStop: RouteJourney["destination"] | null, state: ShipmentState, realCurrentLocation?: string | null) {
   const recorded = realCurrentLocation?.trim();
+  const matchingRouteLocation = recorded ? savedRouteLocation(journey, recorded) : null;
   if (checkpoint.kind === "linehaul") {
     const genericTransitLocation = !recorded || /^(at sea|in flight|in (road )?transit)$/i.test(recorded);
-    if (genericTransitLocation || isSavedRouteLocation(journey, recorded)) {
+    if (genericTransitLocation || matchingRouteLocation) {
       const transit = transitLabel(checkpoint);
       return nextRouteStop ? `${transit} — En route to ${nextRouteStop.name}` : transit;
     }
   }
-  const recordedIsRouteStop = Boolean(recorded && isSavedRouteLocation(journey, recorded));
-  if (checkpoint.kind === "shipment_created") return recorded && !recordedIsRouteStop ? recorded : "Origin / Supplier Location";
+  const recordedIsRouteStop = Boolean(matchingRouteLocation);
+  if (checkpoint.kind === "shipment_created") return currentRouteStop.name;
   if (checkpoint.kind === "collected") return recorded && !recordedIsRouteStop ? recorded : "Collected from Sender";
   if (checkpoint.kind === "out_for_delivery") return recorded && !recordedIsRouteStop ? recorded : `Out for delivery — En route to ${state.nextStop}`;
   if (checkpoint.kind === "delivered") return recorded && !recordedIsRouteStop ? recorded : "Delivered to Receiver";
+  if (matchingRouteLocation && sameRouteLocation(matchingRouteLocation, currentRouteStop)) return currentRouteStop.name;
+  if (matchingRouteLocation) return currentRouteStop.name;
   if (recorded && !recordedIsRouteStop) return recorded;
   return checkpoint.location.name;
 }
@@ -122,15 +144,24 @@ export function createRouteJourneyPresentation(journey: RouteJourney, state: Shi
   const currentIndex = currentIndexOverride ?? checkpointIndexForShipmentStatus(journey, state, previousStatus);
   const currentCheckpoint = journey.checkpoints[currentIndex];
   const nextCheckpoint = state.canonicalStatus === "delivered" ? null : nextMeaningfulCheckpoint(journey, currentIndex);
-  const nextRouteStop = nextVerifiedRouteStop(journey, currentCheckpoint);
+  const routeProgress = routeStopProgress(journey, currentCheckpoint, realCurrentLocation);
+  const orderedStops = [journey.origin, ...journey.transitStops, journey.destination];
+  const currentStop = routeProgress.current ?? journey.origin;
+  const currentStopIndex = Math.max(0, orderedStops.findIndex((location) => location.id === currentStop.id));
+  const nextRouteStop = routeProgress.next;
   const immediateNextCheckpoint = journey.checkpoints[currentIndex + 1] ?? null;
   return {
     journey,
     currentIndex,
     currentCheckpoint,
     nextCheckpoint,
-    currentLocation: currentLocationFor(journey, currentCheckpoint, nextRouteStop, state, realCurrentLocation),
-    nextStop: nextRouteStop?.name ?? immediateNextCheckpoint?.label ?? "Journey Complete",
+    orderedStops,
+    currentStop,
+    currentStopIndex,
+    destinationStop: journey.destination,
+    completedStopIndexes: state.canonicalStatus === "delivered" ? orderedStops.map((_, index) => index) : orderedStops.map((_, index) => index).filter((index) => index < currentStopIndex),
+    currentLocation: currentLocationFor(journey, currentCheckpoint, currentStop, nextRouteStop, state, realCurrentLocation),
+    nextStop: nextRouteStop?.name ?? (routeProgress.current && sameRouteLocation(routeProgress.current, journey.destination) ? "Journey Complete" : immediateNextCheckpoint?.label ?? "Journey Complete"),
     currentStage: state.canonicalStatus === "exception" ? state.displayStatus : currentCheckpoint.label,
   };
 }
