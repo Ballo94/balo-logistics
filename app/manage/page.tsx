@@ -94,6 +94,7 @@ function shipmentToForm(shipment: Shipment): ShipmentEditForm {
     container_number: shipment.container_number ?? "",
     seal_number: shipment.seal_number ?? "",
     declared_value: shipment.declared_value?.toString() ?? "",
+    insurance_status: shipment.insurance_status ?? "not_specified",
     route_template_id: shipment.route_template_id ?? "",
     current_route_checkpoint_id: shipment.current_route_checkpoint_id ?? "",
   };
@@ -264,6 +265,7 @@ export default function ManagePage() {
       container_number: editForm.container_number.trim() || null,
       seal_number: editForm.seal_number.trim() || null,
       declared_value: editForm.declared_value === "" ? null : Number(editForm.declared_value),
+      insurance_status: editForm.insurance_status,
     };
     const { data: updatedData, error: updateError } = await supabase.from("shipments").update(payload).eq("id", editing.id).select("*").single();
     if (updateError) {
@@ -298,6 +300,7 @@ export default function ManagePage() {
     setEditing(refreshed);
     setEditForm({ ...shipmentToForm(refreshed), update_note: "" });
     setEditSuccess("Shipment saved successfully. The shipment list and customer-facing derived state are now refreshed.");
+    window.setTimeout(() => setEditSuccess(""), 6000);
     saveRequestInFlight.current = false;
     setSaving(false);
   }

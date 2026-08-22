@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabase";
 const emptySettings = {
   company_name: "Balo",
   company_phone: "",
+  company_whatsapp: "",
   company_email: "",
   company_address: "",
   company_website: "",
@@ -48,6 +49,7 @@ export default function SettingsPage() {
       setForm({
         company_name: data.company_name || "Balo",
         company_phone: data.company_phone || "",
+        company_whatsapp: data.company_whatsapp || "",
         company_email: data.company_email || "",
         company_address: data.company_address || "",
         company_website: data.company_website || "",
@@ -165,6 +167,12 @@ export default function SettingsPage() {
               }
               className="border rounded-lg p-3"
             />
+
+            <label className="grid gap-1 text-sm font-semibold text-gray-700">
+              Business WhatsApp Number
+              <input type="tel" placeholder="+264 81 123 4567" value={form.company_whatsapp} onChange={(e) => updateForm("company_whatsapp", e.target.value)} className="border rounded-lg p-3" />
+              <span className="text-xs font-normal text-gray-500">Company support number in international format. This is separate from shipment receiver numbers.</span>
+            </label>
 
             <input
               type="text"

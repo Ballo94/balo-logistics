@@ -6,11 +6,12 @@ import { buildJourneyFromSavedRoute, type SavedRouteStop, type SavedRouteTemplat
 import { SHIPMENT_DOCUMENT_BUCKET, type ShipmentDocument } from "../../../lib/shipment-document-records";
 import type { ShipmentCommunication } from "../../../lib/shipment-communications";
 import type { PublicShipmentHistory, PublicShipmentRecord, PublicTrackingBundle } from "../../../lib/public-tracking";
+import { reconcilePublicShipmentHistory, type ShipmentHistoryAuditRow } from "../../../lib/public-shipment-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PUBLIC_SHIPMENT_FIELDS = "id, tracking_number, client_name, origin_country, destination_country, current_location, current_route_checkpoint_id, shipment_status, transport_mode, vessel_name, estimated_delivery, item_description, created_at, courier_name, weight_kg, package_count, package_type, dimensions, container_number, seal_number, declared_value, receiver_name, route_template_id";
+const PUBLIC_SHIPMENT_FIELDS = "id, tracking_number, client_name, origin_country, destination_country, current_location, current_route_checkpoint_id, shipment_status, transport_mode, vessel_name, estimated_delivery, item_description, created_at, courier_name, weight_kg, package_count, package_type, dimensions, container_number, seal_number, declared_value, insurance_status, receiver_name, route_template_id";
 
 const RESPONSE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
 
@@ -35,7 +36,7 @@ export async function GET(_request: Request, context: { params: Promise<{ tracki
   const shipment = { ...publicFields, receiver_address: null } as PublicShipmentRecord;
   try {
     const [historyResult, snapshotResult, snapshotStopsResult, documentsResult, communicationsResult] = await Promise.all([
-      supabase.from("shipment_history").select("status, location, created_at").eq("shipment_id", shipmentId).order("created_at", { ascending: true }),
+      supabase.from("shipment_history").select("status, location, note, created_at, route_checkpoint_id").eq("shipment_id", shipmentId).order("created_at", { ascending: true }),
       supabase.from("shipment_route_snapshots").select("shipment_id, route_template_id, template_name, transport_mode, template_version").eq("shipment_id", shipmentId).maybeSingle(),
       supabase.from("shipment_route_stops").select("id, position, name, country, city, stop_type, code, onward_transport, estimated_distance_km, system_recommended_distance_km, expected_arrival_offset, expected_departure_offset, default_status_text, logistics_location_id").eq("shipment_id", shipmentId).order("position"),
       supabase.from("shipment_documents").select("id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at, lifecycle_status, required_for, replacement_reason, submitted_at, completed_at").eq("shipment_id", shipmentId).eq("visible_to_customer", true).order("uploaded_at", { ascending: false }).order("id", { ascending: false }),
@@ -44,7 +45,6 @@ export async function GET(_request: Request, context: { params: Promise<{ tracki
     const relatedError = historyResult.error ?? snapshotResult.error ?? snapshotStopsResult.error ?? documentsResult.error;
     if (relatedError) return failure("Tracking information is temporarily unavailable.", 500);
 
-    const history = (historyResult.data ?? []) as PublicShipmentHistory[];
     const documents = await signDocuments(supabase, (documentsResult.data ?? []) as ShipmentDocument[]);
     const communications = communicationsResult.error
       ? []
@@ -52,7 +52,9 @@ export async function GET(_request: Request, context: { params: Promise<{ tracki
     const journey = snapshotResult.data
       ? buildSnapshotJourney(shipmentId, snapshotResult.data, snapshotStopsResult.data ?? [])
       : await loadLegacyJourney(supabase, routeTemplateId);
-    const bundle: PublicTrackingBundle = { shipment, history, documents, communications, journey };
+    const history = reconcilePublicShipmentHistory((historyResult.data ?? []) as ShipmentHistoryAuditRow[], journey, shipment.current_route_checkpoint_id) as PublicShipmentHistory[];
+    const companyResult = await supabase.from("company_settings").select("company_whatsapp").order("id", { ascending: true }).limit(1).maybeSingle();
+    const bundle: PublicTrackingBundle = { shipment, history, documents, communications, journey, support: { whatsapp: companyResult.error ? null : companyResult.data?.company_whatsapp ?? null } };
     return NextResponse.json(bundle, { headers: RESPONSE_HEADERS });
   } catch {
     return failure("Tracking information is temporarily unavailable.", 500);

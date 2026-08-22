@@ -23,17 +23,19 @@ export type PublicShipmentRecord = {
   container_number: string | null;
   seal_number: string | null;
   declared_value: number | null;
+  insurance_status: "insured" | "not_insured" | "not_specified" | null;
   receiver_name: string | null;
   receiver_address: null;
 };
 
-export type PublicShipmentHistory = { status: string; location: string | null; created_at: string };
+export type PublicShipmentHistory = { status: string; location: string | null; note?: string | null; created_at: string };
 export type PublicTrackingBundle = {
   shipment: PublicShipmentRecord;
   history: PublicShipmentHistory[];
   documents: ShipmentDocument[];
   communications: ShipmentCommunication[];
   journey: RouteJourney | null;
+  support: { whatsapp: string | null };
 };
 
 type PublicTrackingResponse = Partial<PublicTrackingBundle> & {

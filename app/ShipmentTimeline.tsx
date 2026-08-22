@@ -2,7 +2,7 @@ import { canonicalizeShipmentStatus, getShipmentStageIndex, normalizeShipmentSta
 import type { CheckpointKind, RouteJourney, RouteLeg } from "./lib/route-intelligence";
 import { checkpointIndexForStatus, type RouteJourneyPresentation } from "./lib/route-intelligence/presentation";
 
-type ShipmentHistory = { status: string; location: string | null; created_at: string };
+type ShipmentHistory = { status: string; location: string | null; note?: string | null; created_at: string };
 type Props = { state: ShipmentState; journey: RouteJourney | null; route: RouteJourneyPresentation | null; history: ShipmentHistory[]; originCountry: string; destinationCountry: string; vesselName?: string | null };
 type DisplayMilestone = { key: string; label: string; index: number; state: TimelineState; icon: MilestoneIcon; location?: string };
 
@@ -31,7 +31,7 @@ export default function ShipmentTimeline({ state, journey, route, history, origi
   const plannedMilestones = milestones.filter((milestone) => milestone.index >= currentIndex
     && !recordedStatuses.has(normalizeShipmentStatus(milestone.label))
     && !recordedCanonicalStatuses.has(canonicalizeShipmentStatus(milestone.label)));
-  const recordedThroughIndex = recordedIndexes.length ? Math.max(...recordedIndexes) : -1;
+  const recordedThroughIndex = Math.min(currentIndex, recordedIndexes.length ? Math.max(...recordedIndexes) : -1);
 
   if (journey?.legs.length && route) {
     const activeLegIndex = getActiveLegIndex(journey, currentIndex, state.canonicalStatus === "delivered");

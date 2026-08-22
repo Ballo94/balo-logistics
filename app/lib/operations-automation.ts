@@ -66,6 +66,7 @@ function nextCheckpointFor(journey: RouteJourney, current: RouteCheckpoint) {
 
 function progressFor(journey: RouteJourney, index: number, state: ShipmentState, status: string | null | undefined) {
   if (state.canonicalStatus === "delivered") return 100;
+  if (state.canonicalStatus === "exception") return Math.max(5, Math.min(99, Math.round(5 + (index / Math.max(1, journey.checkpoints.length - 1)) * 95)));
   if (BASELINE_STATUSES.has(normalizeShipmentStatus(status))) return state.progress;
   return Math.max(5, Math.min(99, Math.round(5 + (index / Math.max(1, journey.checkpoints.length - 1)) * 95)));
 }
