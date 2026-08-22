@@ -9,6 +9,8 @@ export const SHIPMENT_DOCUMENT_TYPES = [
 export const SHIPMENT_DOCUMENT_BUCKET = "shipment-documents";
 export type ShipmentDocumentType = (typeof SHIPMENT_DOCUMENT_TYPES)[number];
 export type ShipmentDocumentDirection = "Sent to Customer" | "Received from Customer" | "Document Request" | "Internal / Admin";
+export const SHIPMENT_DOCUMENT_LIFECYCLE_STATUSES = ["requested", "received", "submitted", "completed", "replacement_required"] as const;
+export type ShipmentDocumentLifecycleStatus = (typeof SHIPMENT_DOCUMENT_LIFECYCLE_STATUSES)[number];
 export type ShipmentDocument = {
   id: number;
   shipment_id?: number;
@@ -21,11 +23,24 @@ export type ShipmentDocument = {
   uploaded_at: string;
   created_by?: string | null;
   notes?: string | null;
+  lifecycle_status?: ShipmentDocumentLifecycleStatus | null;
+  required_for?: string | null;
+  replacement_reason?: string | null;
+  submitted_at?: string | null;
+  completed_at?: string | null;
   view_url?: string;
   download_url?: string;
 };
 
-const ADMIN_DOCUMENT_COLUMNS = "id, shipment_id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at, created_by, notes";
+const ADMIN_DOCUMENT_COLUMNS = "id, shipment_id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at, created_by, notes, lifecycle_status, required_for, replacement_reason, submitted_at, completed_at";
+
+export function effectiveDocumentLifecycleStatus(document: ShipmentDocument): ShipmentDocumentLifecycleStatus | null {
+  if (document.document_direction !== "Document Request" && document.document_direction !== "Received from Customer") return null;
+  if (document.lifecycle_status === "replacement_required" || document.lifecycle_status === "submitted" || document.lifecycle_status === "completed" || document.lifecycle_status === "received") return document.lifecycle_status;
+  if (document.document_direction === "Document Request" && !document.file_url) return "requested";
+  if (document.document_direction === "Received from Customer" && document.file_url) return "received";
+  return null;
+}
 
 export function loadAdminShipmentDocuments(shipmentId: number, ascending = false) {
   return supabase.from("shipment_documents").select(ADMIN_DOCUMENT_COLUMNS).eq("shipment_id", shipmentId).order("uploaded_at", { ascending }).order("id", { ascending });

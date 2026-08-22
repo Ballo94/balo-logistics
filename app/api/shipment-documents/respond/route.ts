@@ -16,7 +16,7 @@ const ALLOWED_FILES: Record<string, readonly string[]> = {
   xlsx: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip", "application/octet-stream"],
 };
 
-type RequestRecord = { id: number; shipment_id: number; document_name: string; document_type: string; document_direction: string; file_url: string | null; file_size: number | null; visible_to_customer: boolean; uploaded_at: string };
+type RequestRecord = { id: number; shipment_id: number; document_name: string; document_type: string; document_direction: string; file_url: string | null; file_size: number | null; visible_to_customer: boolean; uploaded_at: string; lifecycle_status: string; required_for: string | null; replacement_reason: string | null; submitted_at: string | null; completed_at: string | null };
 
 export async function POST(request: Request) {
   const requestUrl = new URL(request.url);
@@ -46,10 +46,12 @@ export async function POST(request: Request) {
   if (shipmentError) return NextResponse.json({ error: "The shipment could not be verified." }, { status: 500 });
   if (!shipment) return NextResponse.json({ error: "Shipment not found." }, { status: 404 });
 
-  const { data: requestRecord, error: requestError } = await supabase.from("shipment_documents").select("id, shipment_id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at").eq("id", requestId).maybeSingle();
+  const { data: requestRecord, error: requestError } = await supabase.from("shipment_documents").select("id, shipment_id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at, lifecycle_status, required_for, replacement_reason, submitted_at, completed_at").eq("id", requestId).maybeSingle();
   if (requestError) return NextResponse.json({ error: "The document request could not be verified." }, { status: 500 });
   if (!requestRecord || requestRecord.shipment_id !== shipment.id) return NextResponse.json({ error: "Document request not found for this shipment." }, { status: 404 });
-  if (!requestRecord.visible_to_customer || requestRecord.document_direction !== "Document Request" || requestRecord.file_url || requestRecord.file_size !== null) return NextResponse.json({ error: "This document request is no longer available for upload." }, { status: 409 });
+  const isInitialRequest = requestRecord.lifecycle_status === "requested" && requestRecord.document_direction === "Document Request" && !requestRecord.file_url && requestRecord.file_size === null;
+  const isReplacementRequest = requestRecord.lifecycle_status === "replacement_required";
+  if (!requestRecord.visible_to_customer || (!isInitialRequest && !isReplacementRequest)) return NextResponse.json({ error: "This document request is no longer available for upload." }, { status: 409 });
 
   const safeName = sanitizeFilename(originalName, extension);
   const objectPath = `${shipment.id}/customer-responses/${requestRecord.id}/${crypto.randomUUID()}-${safeName}`;
@@ -57,11 +59,13 @@ export async function POST(request: Request) {
   if (uploadError) return NextResponse.json({ error: "The document could not be stored." }, { status: 500 });
 
   const uploadedAt = new Date().toISOString();
-  const { data: updated, error: updateError } = await supabase.from("shipment_documents").update({ file_url: objectPath, file_size: file.size, uploaded_at: uploadedAt, document_direction: "Received from Customer" }).eq("id", requestRecord.id).eq("shipment_id", shipment.id).eq("document_direction", "Document Request").eq("visible_to_customer", true).is("file_url", null).select("id, shipment_id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at").maybeSingle();
+  const updateQuery = supabase.from("shipment_documents").update({ file_url: objectPath, file_size: file.size, uploaded_at: uploadedAt, document_direction: "Received from Customer", lifecycle_status: "received", replacement_reason: null, submitted_at: null, completed_at: null }).eq("id", requestRecord.id).eq("shipment_id", shipment.id).eq("lifecycle_status", requestRecord.lifecycle_status).eq("visible_to_customer", true);
+  const { data: updated, error: updateError } = await (isInitialRequest ? updateQuery.eq("document_direction", "Document Request").is("file_url", null) : updateQuery).select("id, shipment_id, document_name, document_type, document_direction, file_url, file_size, visible_to_customer, uploaded_at, lifecycle_status, required_for, replacement_reason, submitted_at, completed_at").maybeSingle();
   if (updateError || !updated) {
     await supabase.storage.from(SHIPMENT_DOCUMENT_BUCKET).remove([objectPath]);
     return NextResponse.json({ error: updateError ? "The document request could not be completed." : "This request was already completed." }, { status: updateError ? 500 : 409 });
   }
+  if (isReplacementRequest && requestRecord.file_url) await supabase.storage.from(SHIPMENT_DOCUMENT_BUCKET).remove([storagePathFromUrl(requestRecord.file_url)]);
   const [view, download] = await Promise.all([
     supabase.storage.from(SHIPMENT_DOCUMENT_BUCKET).createSignedUrl(objectPath, 3600),
     supabase.storage.from(SHIPMENT_DOCUMENT_BUCKET).createSignedUrl(objectPath, 3600, { download: originalName }),
@@ -70,6 +74,7 @@ export async function POST(request: Request) {
 }
 
 function textField(value: FormDataEntryValue | null) { return typeof value === "string" ? value.trim() : ""; }
+function storagePathFromUrl(pathOrUrl: string) { const marker = `/storage/v1/object/public/${SHIPMENT_DOCUMENT_BUCKET}/`; const index = pathOrUrl.indexOf(marker); return index < 0 ? pathOrUrl : decodeURIComponent(pathOrUrl.slice(index + marker.length).split("?")[0]); }
 function sanitizeFilename(name: string, extension: string) { const base = name.slice(0, Math.max(0, name.length - extension.length - 1)).normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^[._-]+|[._-]+$/g, "").slice(0, 80) || "customer-document"; return `${base}.${extension}`; }
 function hasExpectedSignature(extension: string, bytes: Uint8Array) {
   if (extension === "pdf") return startsWith(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d]);

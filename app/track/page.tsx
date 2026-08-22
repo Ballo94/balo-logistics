@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import ShipmentTimeline from "../ShipmentTimeline";
+import ShipmentDocumentAttention from "../components/ShipmentDocumentAttention";
 import ShipmentDocuments from "../components/ShipmentDocuments";
 import ShipmentCommunications from "../components/ShipmentCommunications";
 import { getClientDeliveryEstimate } from "../lib/client-delivery-estimate";
@@ -33,6 +34,7 @@ export default function TrackPage() {
   const [message, setMessage] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignedJourney, setAssignedJourney] = useState<RouteJourney | null>(null);
+  const [requestedDocumentUploadId, setRequestedDocumentUploadId] = useState<number | null>(null);
 
   const loadShipment = useCallback(async (query: string, silent = false) => {
     if (!silent) { setLoading(true); setMessage(""); setShipment(null); setHistory([]); setShipmentDocuments([]); setCommunications([]); setAssignedJourney(null); }
@@ -71,6 +73,11 @@ export default function TrackPage() {
     await loadShipment(query);
   }
 
+  const resolveCustomerDocument = useCallback((resolvedDocument: ShipmentDocument) => {
+    setShipmentDocuments((current) => current.map((document) => document.id === resolvedDocument.id ? { ...document, ...resolvedDocument } : document));
+  }, []);
+  const clearRequestedDocumentUpload = useCallback(() => setRequestedDocumentUploadId(null), []);
+
   const latestUpdate = useMemo(() => [...history].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0], [history]);
   const deliveredAt = useMemo(() => [...history].reverse().find((event) => canonicalizeShipmentStatus(event.status) === "delivered")?.created_at ?? null, [history]);
   const shipmentState = useMemo(() => shipment ? deriveShipmentState({ shipmentStatus: shipment.shipment_status, transportMode: shipment.transport_mode, currentLocation: shipment.current_location, originCountry: shipment.origin_country, destinationCountry: shipment.destination_country, receiverAddress: shipment.receiver_address, courierName: shipment.courier_name, estimatedDelivery: shipment.estimated_delivery }) : null, [shipment]);
@@ -99,6 +106,7 @@ export default function TrackPage() {
         {!shipment && !message && <TrackingEmptyState />}
 
         {shipment && shipmentState && <div className="track-results mt-3 space-y-3" aria-live="polite">
+          <ShipmentDocumentAttention key={shipment.tracking_number} documents={shipmentDocuments} trackingNumber={shipment.tracking_number} onUpload={setRequestedDocumentUploadId} />
           <RouteOverview state={shipmentState} journey={routeJourney} route={route} />
           <ShipmentSummary shipment={shipment} lastUpdated={latestUpdate?.created_at ?? shipment.created_at} state={shipmentState} route={route} deliveredAt={deliveredAt} />
           <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(19rem,.75fr)]">
@@ -106,7 +114,7 @@ export default function TrackPage() {
             <LiveStatusCard state={shipmentState} route={route} operations={operations} deliveredAt={deliveredAt} />
           </div>
           <ShipmentCommunications communications={communications} />
-          <ShipmentDocuments documents={shipmentDocuments} trackingNumber={shipment.tracking_number} urlsAreResolved />
+          <ShipmentDocuments documents={shipmentDocuments} trackingNumber={shipment.tracking_number} urlsAreResolved requestedUploadId={requestedDocumentUploadId} onRequestedUploadHandled={clearRequestedDocumentUpload} onDocumentResolved={resolveCustomerDocument} />
           <ShipmentInformation shipment={shipment} state={shipmentState} journey={routeJourney} route={route} />
           <SupportCard />
           <TrustIndicators />

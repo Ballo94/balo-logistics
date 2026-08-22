@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { createTrackingEvent } from "../lib/tracking-events";
 import { ShipmentEditor, TRANSPORT_OPTIONS, type ShipmentEditForm, type ShipmentEditorRecord } from "./ShipmentEditor";
@@ -137,6 +137,7 @@ export default function ManagePage() {
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [editSuccess, setEditSuccess] = useState("");
   const [saving, setSaving] = useState(false);
+  const saveRequestInFlight = useRef(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const loadShipments = useCallback(async () => {
@@ -213,7 +214,7 @@ export default function ManagePage() {
 
   async function saveEdit(event: FormEvent<HTMLFormElement>, authoritativeCurrentLocation?: string) {
     event.preventDefault();
-    if (!editing || !editForm) return;
+    if (!editing || !editForm || saveRequestInFlight.current) return;
     const validationErrors = validateEditForm(editForm);
     const statusChanged = normalize(editing.shipment_status) !== normalize(editForm.shipment_status);
     const checkpointChanged = editing.current_route_checkpoint_id !== (editForm.current_route_checkpoint_id || null);
@@ -225,6 +226,7 @@ export default function ManagePage() {
       setEditSuccess("");
       return;
     }
+    saveRequestInFlight.current = true;
     setSaving(true);
     setEditErrors({});
     setEditSuccess("");
@@ -266,6 +268,7 @@ export default function ManagePage() {
     const { data: updatedData, error: updateError } = await supabase.from("shipments").update(payload).eq("id", editing.id).select("*").single();
     if (updateError) {
       setEditErrors({ form: updateError.message });
+      saveRequestInFlight.current = false;
       setSaving(false);
       return;
     }
@@ -285,6 +288,7 @@ export default function ManagePage() {
       });
       if (historyError) {
         setEditErrors({ form: `Shipment updated, but history could not be saved: ${historyError.message}` });
+        saveRequestInFlight.current = false;
         setSaving(false);
         return;
       }
@@ -294,6 +298,7 @@ export default function ManagePage() {
     setEditing(refreshed);
     setEditForm({ ...shipmentToForm(refreshed), update_note: "" });
     setEditSuccess("Shipment saved successfully. The shipment list and customer-facing derived state are now refreshed.");
+    saveRequestInFlight.current = false;
     setSaving(false);
   }
 
