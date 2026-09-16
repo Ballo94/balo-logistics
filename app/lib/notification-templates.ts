@@ -1,3 +1,6 @@
+import type { CommunicationType } from "./shipment-communications";
+import { buildSmartCommunicationTemplate, type SmartCommunicationShipment } from "./communication-template-engine";
+
 export type NotificationEvent = "shipment_created" | "status_changed" | "delivered";
 
 export type NotificationShipment = {
@@ -8,11 +11,41 @@ export type NotificationShipment = {
   receiver_name?: string | null;
   receiver_email?: string | null;
   receiver_phone?: string | null;
+  client_phone?: string | null;
   destination_country: string;
   current_location?: string | null;
   shipment_status?: string | null;
   estimated_delivery?: string | null;
+  transport_mode?: string | null;
+  current_checkpoint?: string | null;
 };
+
+export type CommunicationTemplateShipment = Pick<NotificationShipment, "tracking_number" | "client_name" | "receiver_name" | "receiver_phone" | "destination_country" | "current_location" | "current_checkpoint" | "shipment_status" | "estimated_delivery" | "transport_mode"> & {
+  origin_country?: string | null;
+  next_checkpoint?: string | null;
+  next_location?: string | null;
+  courier_name?: string | null;
+};
+
+export function buildCommunicationTemplate(type: CommunicationType, shipment: CommunicationTemplateShipment) {
+  const typeToUpdate = { Information: "General Information", Delay: "Delay / Exception", Customs: "Customs / Customs Clearance", Payment: "General Information", Arrival: "Arrived Destination", Delivery: "Out for Delivery", Warning: "General Information", Success: "General Information" } as const;
+  const context: SmartCommunicationShipment = {
+    receiverName: shipment.receiver_name ?? shipment.client_name,
+    trackingNumber: shipment.tracking_number,
+    transportMode: shipment.transport_mode,
+    shipmentStatus: shipment.shipment_status,
+    currentCheckpoint: shipment.current_checkpoint,
+    currentLocation: shipment.current_location,
+    nextCheckpoint: shipment.next_checkpoint,
+    nextLocation: shipment.next_location,
+    origin: shipment.origin_country,
+    destination: shipment.destination_country,
+    estimatedDelivery: shipment.estimated_delivery,
+    courier: shipment.courier_name,
+  };
+  const result = buildSmartCommunicationTemplate(typeToUpdate[type], context, { forceNeutral: true, category: type });
+  return { title: result.title, message: result.message };
+}
 
 function safe(value: string | null | undefined) {
   return value?.trim() || "Not available";
