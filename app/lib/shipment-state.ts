@@ -91,11 +91,14 @@ export function canonicalizeShipmentStatus(status: string | null | undefined): C
   const value = normalizeShipmentStatus(status);
   if (/delivered|journey complete|completed/.test(value)) return "delivered";
   if (/out for delivery|with courier|last mile|final delivery/.test(value)) return "out_for_delivery";
-  if (/destination (warehouse|hub)|distribution (hub|centre|center)/.test(value)) return "destination_hub";
+  if (/origin (warehouse|distribution (centre|center))/.test(value)) return "warehouse";
+  if (value === "with local delivery partner / destination facility") return "destination_hub";
+  if (/destination (warehouse|hub|distribution)|distribution (hub|centre|center)/.test(value)) return "destination_hub";
   if (/custom|clearance|border processing|border clearance|cleared/.test(value)) return "customs";
-  if (/arrived (at )?(destination|transit)|destination (airport|port)|arrival/.test(value)) return "arrived_destination";
+  if (/arrived (at )?transit|transit arrival|transit .*processing|road hub processing|arrived road hub|border (exit|entry)|rail terminal|transit hub|route checkpoint/.test(value)) return "transit";
+  if (/arrived (at )?destination|destination (airport|port)|port of discharge|discharged from vessel|arrival/.test(value)) return "arrived_destination";
   if (/in flight|at sea|ocean transit|road transit|in transit|departed|on route|shipping/.test(value)) return "transit";
-  if (/awaiting departure|loaded on|loaded for|origin processing/.test(value)) return "awaiting_departure";
+  if (/awaiting departure|loaded on|loaded for|origin processing|origin airport|port of loading/.test(value)) return "awaiting_departure";
   if (/warehouse|origin hub|hub processing|sorting|arrived origin/.test(value)) return "warehouse";
   if (/picked up|pickup|collected/.test(value)) return "collected";
   if (/delayed|shipment issue|exception|held/.test(value)) return "exception";
@@ -154,7 +157,7 @@ function currentCheckpoint(status: CanonicalShipmentStatus, stage: string) {
 
 function storedLocationIsCompatible(location: string, status: CanonicalShipmentStatus) {
   const value = location.toLowerCase();
-  if (status === "delivered") return /delivered|receiver|customer|address/.test(value);
+  if (status === "delivered") return !/\bairport\b|in flight|at sea/.test(value);
   if (status === "created") return !/delivered|out for delivery|in flight|at sea|destination customs/.test(value);
   if (status === "out_for_delivery") return !/origin airport|origin port|in flight|at sea/.test(value);
   return true;
@@ -164,7 +167,8 @@ function fallbackCurrentLocation(status: CanonicalShipmentStatus, kind: Transpor
   if (status === "created") return "Origin / Supplier Location";
   if (status === "collected") return "Collected from Sender";
   if (status === "warehouse" || status === "awaiting_departure") return "Origin Warehouse / Logistics Hub";
-  if (status === "transit" || status === "arrived_destination") return kind === "air" ? "In Flight" : kind === "sea" ? "At Sea" : kind === "road" ? "In Road Transit" : "In Transit";
+  if (status === "transit") return kind === "air" ? "In Flight" : kind === "sea" ? "At Sea" : kind === "road" ? "In Road Transit" : "In Transit";
+  if (status === "arrived_destination") return kind === "air" ? "Destination Airport" : kind === "sea" ? "Destination Port" : kind === "road" ? "Destination Distribution Centre" : "Destination Facility";
   if (status === "customs") return "Destination Customs Facility";
   if (status === "destination_hub") return "Destination Distribution Hub";
   if (status === "out_for_delivery") return "Local Delivery Network";
@@ -183,15 +187,27 @@ function nextStop(status: CanonicalShipmentStatus, kind: TransportKind, origin: 
   return destination;
 }
 
-function defaultStatusNote(status: CanonicalShipmentStatus, kind: TransportKind) {
-  if (status === "created") return "Your shipment has been registered with Balo Logistics.";
-  if (status === "collected") return "Your shipment has been collected and is progressing toward the next logistics checkpoint.";
-  if (status === "warehouse" || status === "awaiting_departure") return "Your shipment is being processed at the logistics facility.";
-  if (status === "transit" || status === "arrived_destination") return `Your shipment is currently moving through the ${kind === "air" ? "air freight" : kind === "sea" ? "sea freight" : kind === "road" ? "road transport" : "logistics"} network.`;
-  if (status === "customs") return "Your shipment is undergoing customs processing.";
-  if (status === "destination_hub") return "Your shipment is being processed at the destination logistics hub.";
-  if (status === "out_for_delivery") return "Your shipment is with the local delivery team.";
-  if (status === "delivered") return "Your shipment has been delivered successfully.";
+export function getAutomaticCustomerUpdate(status: string | null | undefined, kind: TransportKind) {
+  const recordedStatus = normalizeShipmentStatus(status);
+  const canonicalStatus = canonicalizeShipmentStatus(status);
+  if (recordedStatus === "customs cleared") return "Your shipment has completed customs clearance and is moving toward local delivery.";
+  if (recordedStatus === "with local delivery partner / destination facility") return "Your shipment is with the local delivery partner or destination facility.";
+  if (canonicalStatus === "created") return "Your shipment has been registered and is being prepared for its journey.";
+  if (canonicalStatus === "collected") return "Your shipment has been collected and is progressing toward the next logistics checkpoint.";
+  if (canonicalStatus === "warehouse" || canonicalStatus === "awaiting_departure") return "Your shipment is being processed at the logistics facility.";
+  if (/export customs|origin customs|export clearance/.test(recordedStatus)) return "Your shipment is undergoing export customs processing.";
+  if (/import customs|destination customs|import clearance/.test(recordedStatus)) return "Your shipment is undergoing import customs processing.";
+  if (/arrived (at )?transit|transit arrival/.test(recordedStatus)) return "Your shipment has arrived at a transit checkpoint.";
+  if (/departed (from )?transit|transit departure/.test(recordedStatus)) return "Your shipment has departed the transit checkpoint and is continuing its journey.";
+  if (canonicalStatus === "arrived_destination") {
+    const facility = kind === "air" ? "airport" : kind === "sea" ? "port" : kind === "road" ? "road transport facility" : "transport facility";
+    return `Your shipment has arrived at the destination ${facility} and is progressing to the next processing stage.`;
+  }
+  if (canonicalStatus === "transit") return "Your shipment is currently in transit to the next checkpoint.";
+  if (canonicalStatus === "customs") return "Your shipment is undergoing customs processing.";
+  if (canonicalStatus === "destination_hub") return "Your shipment is being processed at the destination logistics hub.";
+  if (canonicalStatus === "out_for_delivery") return "Your shipment is on its final delivery journey.";
+  if (canonicalStatus === "delivered") return "Your shipment has been delivered successfully.";
   return "Your shipment requires operational attention. Please refer to the latest tracking update.";
 }
 
@@ -240,7 +256,7 @@ export function deriveShipmentState(input: ShipmentStateInput): ShipmentState {
     transportKind,
     transportLabel: transportLabel(transportKind, input.transportMode),
     operationalStage: stage,
-    statusNote: latestNote || defaultStatusNote(canonicalStatus, transportKind),
+    statusNote: latestNote || getAutomaticCustomerUpdate(input.shipmentStatus, transportKind),
     estimatedArrival: input.estimatedDelivery?.trim() || null,
     modeDetailLabel,
     modeDetailValue,

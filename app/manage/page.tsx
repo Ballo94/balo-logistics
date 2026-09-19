@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { supabase } from "../lib/supabase";
 import { createTrackingEvent } from "../lib/tracking-events";
 import { ShipmentEditor, TRANSPORT_OPTIONS, type ShipmentEditForm, type ShipmentEditorRecord } from "./ShipmentEditor";
+import { isFinalMileStatus } from "../lib/shipment-current-location";
 import { automateShipmentOperations, getStatusTransitionWarning } from "../lib/operations-automation";
 import { weightToKilograms } from "../lib/package-fields";
 
@@ -100,7 +101,7 @@ function shipmentToForm(shipment: Shipment): ShipmentEditForm {
   };
 }
 
-function validateEditForm(form: ShipmentEditForm) {
+function validateEditForm(form: ShipmentEditForm, requiresDeliveryAddress = false) {
   const errors: Record<string, string> = {};
   if (!form.client_name.trim()) errors.client_name = "Sender name is required.";
   if (!form.receiver_name.trim()) errors.receiver_name = "Receiver name is required.";
@@ -111,6 +112,11 @@ function validateEditForm(form: ShipmentEditForm) {
   if (!form.origin_country.trim()) errors.origin_country = "Origin is required.";
   if (!form.destination_country.trim()) errors.destination_country = "Destination is required.";
   if (!form.shipment_status.trim()) errors.shipment_status = "Select a shipment status.";
+  if (isFinalMileStatus(form.shipment_status) && !form.current_location.trim()) errors.current_location = "Select or enter the actual delivery-stage location before saving.";
+  if (requiresDeliveryAddress && ["out for delivery", "delivered"].includes(normalize(form.shipment_status)) && !form.receiver_address.trim()) {
+    errors.receiver_address = "Enter the receiver's final delivery address for this door-to-door shipment.";
+    errors.form = "Final delivery address is missing. Open Receiver / Client and add it before this door-to-door update.";
+  }
   if (!TRANSPORT_OPTIONS.includes(form.transport_mode as (typeof TRANSPORT_OPTIONS)[number])) errors.transport_mode = "Select a valid transport mode.";
   if (form.estimated_delivery && Number.isNaN(new Date(`${form.estimated_delivery}T00:00:00`).getTime())) errors.estimated_delivery = "Enter a valid estimated delivery date.";
   if (form.weight_kg && (!Number.isFinite(Number(form.weight_kg)) || Number(form.weight_kg) < 0)) errors.weight_kg = "Total weight must be a valid non-negative number.";
@@ -213,10 +219,10 @@ export default function ManagePage() {
     setEditSuccess("");
   }
 
-  async function saveEdit(event: FormEvent<HTMLFormElement>, authoritativeCurrentLocation?: string) {
+  async function saveEdit(event: FormEvent<HTMLFormElement>, authoritativeCurrentLocation?: string, requiresDeliveryAddress = false) {
     event.preventDefault();
     if (!editing || !editForm || saveRequestInFlight.current) return;
-    const validationErrors = validateEditForm(editForm);
+    const validationErrors = validateEditForm(editForm, requiresDeliveryAddress);
     const statusChanged = normalize(editing.shipment_status) !== normalize(editForm.shipment_status);
     const checkpointChanged = editing.current_route_checkpoint_id !== (editForm.current_route_checkpoint_id || null);
     const selectedCurrentLocation = authoritativeCurrentLocation?.trim() || editForm.current_location;
@@ -289,7 +295,7 @@ export default function ManagePage() {
         routeCheckpointId: editForm.current_route_checkpoint_id || null,
       });
       if (historyError) {
-        setEditErrors({ form: `Shipment updated, but history could not be saved: ${historyError.message}` });
+        setEditErrors({ form: `Shipment saved, but its tracking history could not be recorded. Keep this editor open and retry Save Update; the existing history check prevents a duplicate. ${historyError.message}` });
         saveRequestInFlight.current = false;
         setSaving(false);
         return;

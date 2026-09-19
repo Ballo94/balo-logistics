@@ -41,11 +41,10 @@ export default function Home() {
             <Brand />
             <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary navigation">
               <NavLink href="#home" active>Home</NavLink><NavLink href="#services">Services</NavLink><NavLink href="/track">Track Shipment</NavLink><NavLink href="#contact">Contact</NavLink>
-              <Link href="/login" className="ml-3 rounded-xl bg-[#f6c945] px-5 py-3 text-sm font-black text-[#071a33] shadow-lg shadow-amber-950/20 transition hover:-translate-y-0.5 hover:bg-[#ffd968] focus:outline-none focus:ring-4 focus:ring-yellow-300/40">Admin Login</Link>
             </nav>
             <button type="button" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-label="Toggle navigation" className="grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#f6c945] lg:hidden"><MenuIcon open={menuOpen}/></button>
           </div>
-          {menuOpen && <nav className="border-t border-white/15 bg-[#07558f]/95 px-4 py-4 lg:hidden" aria-label="Mobile navigation"><div className="mx-auto grid max-w-7xl gap-1"><NavLink href="#home" active>Home</NavLink><NavLink href="#services">Services</NavLink><NavLink href="/track">Track Shipment</NavLink><NavLink href="#contact">Contact</NavLink><Link href="/login" className="mt-2 rounded-xl bg-[#f6c945] px-4 py-3 text-center text-sm font-black text-[#071a33]">Admin Login</Link></div></nav>}
+          {menuOpen && <nav className="border-t border-white/15 bg-[#07558f]/95 px-4 py-4 lg:hidden" aria-label="Mobile navigation"><div className="mx-auto grid max-w-7xl gap-1"><NavLink href="#home" active>Home</NavLink><NavLink href="#services">Services</NavLink><NavLink href="/track">Track Shipment</NavLink><NavLink href="#contact">Contact</NavLink></div></nav>}
         </header>
 
         <div id="home" className="relative z-10 mx-auto grid max-w-7xl gap-12 px-4 pb-20 pt-20 sm:px-6 sm:pt-24 lg:grid-cols-[1.1fr_.9fr] lg:items-center lg:px-8 lg:pb-28 lg:pt-32">

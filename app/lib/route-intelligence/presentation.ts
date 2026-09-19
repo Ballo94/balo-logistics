@@ -33,8 +33,17 @@ const STATUS_CHECKPOINTS: Record<CanonicalShipmentStatus, readonly CheckpointKin
 export function checkpointIndexForStatus(journey: RouteJourney, status: CanonicalShipmentStatus) {
   const kinds = STATUS_CHECKPOINTS[status];
   const candidates = journey.checkpoints.map((item, index) => ({ item, index })).filter(({ item }) => kinds.includes(item.kind));
+  if (!candidates.length && status === "destination_hub") {
+    const customsIndex = journey.checkpoints.findLastIndex((item) => item.kind === "import_customs");
+    if (customsIndex >= 0) return customsIndex;
+  }
   if (!candidates.length) return 0;
   return status === "transit" ? candidates[0].index : candidates.at(-1)?.index ?? 0;
+}
+
+/** Generic statuses have no exact route identity; exceptions retain their last known checkpoint. */
+export function checkpointIdForFallbackStatus(status: string, currentId: string) {
+  return /^(delayed|shipment issue|exception|held)$/i.test(status.trim()) ? currentId : "";
 }
 
 function checkpointCandidates(journey: RouteJourney, status: string) {
@@ -50,7 +59,10 @@ function checkpointCandidates(journey: RouteJourney, status: string) {
 export function checkpointIndexForShipmentStatus(journey: RouteJourney, state: ShipmentState, previousStatus?: string | null, statusHistory?: readonly string[], exactCheckpointId?: string | null) {
   if (exactCheckpointId) {
     const exactIdentityIndex = journey.checkpoints.findIndex((checkpoint) => checkpoint.id === exactCheckpointId);
-    if (exactIdentityIndex >= 0) return exactIdentityIndex;
+    if (exactIdentityIndex >= 0) {
+      const exactStatus = normalizeShipmentStatus(journey.checkpoints[exactIdentityIndex].label);
+      if (state.canonicalStatus === "exception" || exactStatus === state.normalizedStatus || canonicalizeShipmentStatus(exactStatus) === state.canonicalStatus) return exactIdentityIndex;
+    }
   }
   if (statusHistory?.length) {
     let resolved = 0;
@@ -71,13 +83,6 @@ export function checkpointIndexForShipmentStatus(journey: RouteJourney, state: S
     if (previousExactIndex >= 0) return previousExactIndex;
   }
   return checkpointIndexForStatus(journey, state.canonicalStatus);
-}
-
-function nextMeaningfulCheckpoint(journey: RouteJourney, currentIndex: number) {
-  const current = journey.checkpoints[currentIndex];
-  return journey.checkpoints.slice(currentIndex + 1).find((item) => item.location.id !== current.location.id || item.phase !== current.phase)
-    ?? journey.checkpoints[currentIndex + 1]
-    ?? null;
 }
 
 function sameRouteLocation(left: RouteJourney["origin"], right: RouteJourney["origin"]) {
@@ -130,12 +135,12 @@ function currentLocationFor(journey: RouteJourney, checkpoint: RouteCheckpoint, 
     }
   }
   const recordedIsRouteStop = Boolean(matchingRouteLocation);
-  if (checkpoint.kind === "shipment_created") return currentRouteStop.name;
+  if (checkpoint.kind === "shipment_created") return recorded || currentRouteStop.name;
   if (checkpoint.kind === "collected") return recorded && !recordedIsRouteStop ? recorded : "Collected from Sender";
-  if (checkpoint.kind === "out_for_delivery") return recorded && !recordedIsRouteStop ? recorded : `Out for delivery — En route to ${state.nextStop}`;
-  if (checkpoint.kind === "delivered") return recorded && !recordedIsRouteStop ? recorded : "Delivered to Receiver";
+  if (state.normalizedStatus === "with local delivery partner / destination facility") return recorded || "Destination facility location pending";
+  if (checkpoint.kind === "out_for_delivery" || checkpoint.kind === "delivered") return state.currentLocation;
   if (matchingRouteLocation && sameRouteLocation(matchingRouteLocation, currentRouteStop)) return currentRouteStop.name;
-  if (matchingRouteLocation) return currentRouteStop.name;
+  if (matchingRouteLocation) return matchingRouteLocation.name;
   if (recorded && !recordedIsRouteStop) return recorded;
   return checkpoint.location.name;
 }
@@ -143,13 +148,12 @@ function currentLocationFor(journey: RouteJourney, checkpoint: RouteCheckpoint, 
 export function createRouteJourneyPresentation(journey: RouteJourney, state: ShipmentState, realCurrentLocation?: string | null, currentIndexOverride?: number, previousStatus?: string | null): RouteJourneyPresentation {
   const currentIndex = currentIndexOverride ?? checkpointIndexForShipmentStatus(journey, state, previousStatus);
   const currentCheckpoint = journey.checkpoints[currentIndex];
-  const nextCheckpoint = state.canonicalStatus === "delivered" ? null : nextMeaningfulCheckpoint(journey, currentIndex);
+  const nextCheckpoint = state.canonicalStatus === "delivered" ? null : journey.checkpoints[currentIndex + 1] ?? null;
   const routeProgress = routeStopProgress(journey, currentCheckpoint, realCurrentLocation);
   const orderedStops = [journey.origin, ...journey.transitStops, journey.destination];
   const currentStop = routeProgress.current ?? journey.origin;
   const currentStopIndex = Math.max(0, orderedStops.findIndex((location) => location.id === currentStop.id));
   const nextRouteStop = routeProgress.next;
-  const immediateNextCheckpoint = journey.checkpoints[currentIndex + 1] ?? null;
   return {
     journey,
     currentIndex,
@@ -161,7 +165,23 @@ export function createRouteJourneyPresentation(journey: RouteJourney, state: Shi
     destinationStop: journey.destination,
     completedStopIndexes: state.canonicalStatus === "delivered" ? orderedStops.map((_, index) => index) : orderedStops.map((_, index) => index).filter((index) => index < currentStopIndex),
     currentLocation: currentLocationFor(journey, currentCheckpoint, currentStop, nextRouteStop, state, realCurrentLocation),
-    nextStop: nextRouteStop?.name ?? (routeProgress.current && sameRouteLocation(routeProgress.current, journey.destination) ? "Journey Complete" : immediateNextCheckpoint?.label ?? "Journey Complete"),
-    currentStage: state.canonicalStatus === "exception" ? state.displayStatus : currentCheckpoint.label,
+    nextStop: state.canonicalStatus === "delivered" ? "Journey Complete" : state.canonicalStatus === "out_for_delivery" ? "Delivered" : state.normalizedStatus === "with local delivery partner / destination facility" ? "Out For Delivery" : nextRouteStop?.name ?? nextCheckpoint?.label ?? "Delivery confirmation pending",
+    currentStage: state.canonicalStatus === "exception" || ["customs cleared", "with local delivery partner / destination facility"].includes(state.normalizedStatus) ? state.displayStatus : currentCheckpoint.label,
   };
+}
+
+export function routeOverviewPoints(route: RouteJourneyPresentation, state: ShipmentState) {
+  const finalMile = state.normalizedStatus === "with local delivery partner / destination facility" || state.canonicalStatus === "out_for_delivery" || state.canonicalStatus === "delivered";
+  const lastIndex = route.orderedStops.length - 1;
+  const receiverIsRouteDestination = route.destinationStop.kind === "customer_address";
+  return route.orderedStops.map((location, index) => {
+    const completedAfterHub = finalMile && (index < lastIndex || !receiverIsRouteDestination || state.canonicalStatus === "delivered");
+    const progressState = completedAfterHub || route.completedStopIndexes.includes(index) ? "complete" : finalMile ? "future" : index === route.currentStopIndex ? "current" : "future";
+    return {
+      label: index === 0 ? "Origin" : index === lastIndex ? "Destination" : "Transit",
+      value: location.name,
+      state: progressState,
+      arrivalLabel: index === lastIndex && finalMile && completedAfterHub ? state.canonicalStatus === "delivered" ? "Route complete" : "Arrived" : null,
+    };
+  });
 }

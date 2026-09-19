@@ -11,8 +11,8 @@ export type SavedRouteStop = { id: string; route_template_id: string; position: 
 export type EditableRouteStop = Omit<SavedRouteStop, "id" | "route_template_id" | "position"> & { id: string };
 export function routeLocationMetadata(stop: Pick<SavedRouteStop, "logistics_location">) { return Array.isArray(stop.logistics_location) ? stop.logistics_location[0] ?? null : stop.logistics_location ?? null; }
 
-function mode(value: string | null | undefined): RouteTransportMode { const normalized = value?.toLowerCase(); if (normalized === "air" || normalized === "sea" || normalized === "road") return normalized; if (normalized === "rail" || normalized === "courier" || normalized === "internal transfer") return "road"; return "multimodal"; }
-function segmentMode(stop: SavedRouteStop, template: SavedRouteTemplate): Exclude<RouteTransportMode, "multimodal"> { const selected = mode(stop.onward_transport ?? template.transport_mode); return selected === "multimodal" ? "road" : selected; }
+function mode(value: string | null | undefined): RouteTransportMode { const normalized = value?.toLowerCase(); if (normalized === "air" || normalized === "sea" || normalized === "road") return normalized; return "multimodal"; }
+function segmentMode(stop: SavedRouteStop, template: SavedRouteTemplate): RouteTransportMode { return mode(stop.onward_transport ?? template.transport_mode); }
 function location(stop: SavedRouteStop): LogisticsLocation { return { id: `route-stop-${stop.id}`, name: stop.name, city: stop.city, country: stop.country, countryCode: "XX", kind: stop.stop_type, code: stop.code ?? undefined }; }
 
 type Draft = { kind: CheckpointKind; phase: RoutePhase; label: string; description: string; location: LogisticsLocation; transportMode: RouteTransportMode; sourceStopId: string };

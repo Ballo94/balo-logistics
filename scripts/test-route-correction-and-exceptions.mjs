@@ -24,6 +24,6 @@ assert.deepEqual(publicRows.map((row) => row.status), ["A", "B", "B", "Delayed"]
 assert.ok(publicRows.every((row) => !("route_checkpoint_id" in row)), "immutable checkpoint IDs stay server-side");
 
 const operations = await readFile(new URL("../app/lib/operations-automation.ts", import.meta.url), "utf8");
-assert.match(operations, /canonicalStatus === "exception"[\s\S]{0,180}index/);
+assert.match(operations, /Math\.min\(99,[\s\S]{0,120}index/);
 assert.match(operations, /exactCheckpointId/);
 console.log("Route correction and exception-state regression tests passed.");

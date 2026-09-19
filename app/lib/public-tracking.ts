@@ -28,7 +28,7 @@ export type PublicShipmentRecord = {
   receiver_address: null;
 };
 
-export type PublicShipmentHistory = { status: string; location: string | null; note?: string | null; created_at: string };
+export type PublicShipmentHistory = { status: string; location: string | null; note?: string | null; created_at: string; checkpoint_index?: number | null };
 export type PublicTrackingBundle = {
   shipment: PublicShipmentRecord;
   history: PublicShipmentHistory[];

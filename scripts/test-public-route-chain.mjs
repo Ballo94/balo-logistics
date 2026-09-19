@@ -44,22 +44,22 @@ const { createRouteJourneyPresentation } = await importTypeScript(presentationSo
 ]);
 const state = { canonicalStatus: "created", displayStatus: "Shipment Created", normalizedStatus: "shipment created", nextStop: "legacy fallback" };
 const expectedProgress = [
-  ["Walvis Bay", "Port of Walvis Bay", "Port of Cape Town"],
+  ["Walvis Bay", "Walvis Bay", "Port of Cape Town"],
   ["Port of Cape Town", "Port of Cape Town", "Port of Durban"],
   ["Port of Durban", "Port of Durban", "Port of Dar es Salaam"],
   ["Port of Dar es Salaam", "Port of Dar es Salaam", "Jebel Ali Port"],
-  ["Jebel Ali Port", "Jebel Ali Port", "Journey Complete"],
+  ["Jebel Ali Port", "Jebel Ali Port", "Discharged from Vessel"],
 ];
-for (const [recordedLocation, expectedCurrentPresentation, expectedNext] of expectedProgress) {
-  const currentIndex = journey.checkpoints.findIndex((checkpoint) => checkpoint.location.name === expectedCurrentPresentation);
+for (const [position, [recordedLocation, expectedCurrentPresentation, expectedNext]] of expectedProgress.entries()) {
+  const currentIndex = journey.checkpoints.findIndex((checkpoint) => checkpoint.location.name === names[position]);
   assert.ok(currentIndex >= 0);
   const presentation = createRouteJourneyPresentation(journey, state, recordedLocation, currentIndex);
   assert.equal(presentation.currentLocation, expectedCurrentPresentation);
   assert.equal(presentation.nextStop, expectedNext);
   assert.notEqual(presentation.currentLocation, presentation.nextStop);
   assert.equal(presentation.orderedStops.length, 5);
-  assert.equal(presentation.currentStop.name, expectedCurrentPresentation);
-  assert.equal(presentation.orderedStops[presentation.currentStopIndex].name, expectedCurrentPresentation);
+  assert.equal(presentation.currentStop.name, names[position]);
+  assert.equal(presentation.orderedStops[presentation.currentStopIndex].name, presentation.currentStop.name);
   assert.equal(presentation.orderedStops.filter((_, index) => index === presentation.currentStopIndex).length, 1);
   assert.deepEqual(presentation.orderedStops.map((location) => location.name), names);
 }
@@ -74,9 +74,9 @@ assert.match(timelineSource, /origin: orderedLocations\[index\]/);
 assert.match(timelineSource, /destination: orderedLocations\[index \+ 1\]/);
 
 const trackingPageSource = await readFile(new URL("../app/track/page.tsx", import.meta.url), "utf8");
-assert.match(trackingPageSource, /route\.orderedStops\.map/);
-assert.match(trackingPageSource, /index === route\.currentStopIndex/);
-assert.match(trackingPageSource, />Current location</);
+assert.match(trackingPageSource, /routeOverviewPoints\(route, state\)/);
+assert.match(presentationSource, /route\.orderedStops\.map/);
+assert.match(presentationSource, /index === route\.currentStopIndex/);
 assert.doesNotMatch(trackingPageSource, /journey\.transitStops\.map[\s\S]{0,500}label: "Current location"/);
 
 console.log("Public route-chain regression tests passed.");

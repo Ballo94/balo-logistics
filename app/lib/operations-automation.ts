@@ -35,39 +35,31 @@ export type OperationsAutomation = {
   statusOptions: string[];
 };
 
-const BASELINE_STATUSES = new Set(["shipment created", "collected", "in warehouse", "in transit", "customs clearance", "out for delivery", "delivered", "delayed", "shipment issue"]);
 const EXCEPTION_STATUSES = ["Delayed", "Shipment Issue"];
 
 function transitLocation(journey: RouteJourney, checkpoint: RouteCheckpoint) {
   if (checkpoint.kind === "shipment_created") return "Origin / Supplier Location";
   if (checkpoint.kind === "collected") return `Origin Warehouse – ${journey.origin.city}`;
   if (checkpoint.kind === "origin_warehouse") return `Origin Warehouse – ${journey.origin.city}`;
-  if (checkpoint.kind === "departed_origin") return journey.transportMode === "air" ? "In Flight" : journey.transportMode === "sea" ? "At Sea" : "In Road Transit";
-  if (checkpoint.kind === "linehaul") return journey.transportMode === "air" ? "In Flight" : journey.transportMode === "sea" ? "At Sea" : "In Road Transit";
+  if (checkpoint.kind === "departed_origin") return checkpoint.transportMode === "air" ? "In Flight" : checkpoint.transportMode === "sea" ? "At Sea" : checkpoint.transportMode === "road" ? "In Road Transit" : "In Transit";
+  if (checkpoint.kind === "linehaul") return checkpoint.transportMode === "air" ? "In Flight" : checkpoint.transportMode === "sea" ? "At Sea" : checkpoint.transportMode === "road" ? "In Road Transit" : "In Transit";
   if (checkpoint.kind === "delivered") return "Delivered to Receiver";
   return checkpoint.location.name;
 }
 
-function nextOperationalLocation(journey: RouteJourney, next: RouteCheckpoint | undefined) {
+function nextOperationalLocation(next: RouteCheckpoint | undefined) {
   if (!next) return "Journey Complete";
-  if (next.kind === "linehaul") return journey.transportMode === "air" ? "Air Transit" : journey.transportMode === "sea" ? "Sea Transit" : "Road Transit";
+  if (next.kind === "linehaul") return next.transportMode === "air" ? "Air Transit" : next.transportMode === "sea" ? "Sea Transit" : next.transportMode === "road" ? "Road Transit" : "Freight Transit";
   if (next.kind === "delivered") return "Receiver";
   return next.location.name;
 }
 
 function nextCheckpointFor(journey: RouteJourney, current: RouteCheckpoint) {
-  if (current.kind === "collected") {
-    const targetKind: RouteCheckpoint["kind"] = journey.transportMode === "road" ? "departed_origin" : "origin_gateway";
-    return journey.checkpoints.find((item) => item.sequence > current.sequence && item.kind === targetKind);
-  }
-  if (current.kind === "departed_origin") return journey.checkpoints.find((item) => item.sequence > current.sequence && ["transit_arrival", "destination_arrival", "border_exit", "destination_warehouse"].includes(item.kind));
   return journey.checkpoints[current.sequence + 1];
 }
 
-function progressFor(journey: RouteJourney, index: number, state: ShipmentState, status: string | null | undefined) {
+function progressFor(journey: RouteJourney, index: number, state: ShipmentState) {
   if (state.canonicalStatus === "delivered") return 100;
-  if (state.canonicalStatus === "exception") return Math.max(5, Math.min(99, Math.round(5 + (index / Math.max(1, journey.checkpoints.length - 1)) * 95)));
-  if (BASELINE_STATUSES.has(normalizeShipmentStatus(status))) return state.progress;
   return Math.max(5, Math.min(99, Math.round(5 + (index / Math.max(1, journey.checkpoints.length - 1)) * 95)));
 }
 
@@ -107,17 +99,18 @@ export function automateShipmentOperations(input: OperationsAutomationInput): Op
   const checkpointIndex = checkpointIndexForShipmentStatus(journey, state, input.previousShipmentStatus, input.statusHistory, input.exactCheckpointId);
   const current = journey.checkpoints[checkpointIndex];
   const next = state.canonicalStatus === "delivered" ? undefined : nextCheckpointFor(journey, current);
+  const manualDeliveryStage = ["customs cleared", "with local delivery partner / destination facility"].includes(state.normalizedStatus);
   return {
     state,
     journey,
-    currentCheckpoint: current.label,
-    currentLocation: transitLocation(journey, current),
-    nextCheckpoint: next?.label ?? "Journey Complete",
-    nextLocation: nextOperationalLocation(journey, next),
-    progress: progressFor(journey, checkpointIndex, state, input.shipmentStatus),
-    transportStage: current.label,
-    customerStage: current.label,
-    customerNote: input.operationalNote?.trim() || current.description,
+    currentCheckpoint: manualDeliveryStage ? state.displayStatus : current.label,
+    currentLocation: state.normalizedStatus === "with local delivery partner / destination facility" && current.location.kind === "airport" ? "Location update pending" : transitLocation(journey, current),
+    nextCheckpoint: state.canonicalStatus === "delivered" ? "Journey Complete" : next?.label ?? "Delivery confirmation pending",
+    nextLocation: state.canonicalStatus === "delivered" ? "Journey Complete" : next ? nextOperationalLocation(next) : "Delivery confirmation pending",
+    progress: progressFor(journey, checkpointIndex, state),
+    transportStage: manualDeliveryStage ? state.displayStatus : current.label,
+    customerStage: manualDeliveryStage ? state.displayStatus : current.label,
+    customerNote: input.operationalNote?.trim() || (manualDeliveryStage ? state.statusNote : current.description),
     eta: input.estimatedDelivery?.trim() || null,
     etaRecommendation: normalizeShipmentStatus(input.shipmentStatus).includes("delay") ? "Review the manually entered ETA; it has not been changed automatically." : "No ETA change recommended.",
     checkpointIndex,
