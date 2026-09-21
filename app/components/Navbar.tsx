@@ -23,26 +23,26 @@ export default function Navbar() {
           </h1>
 
           <p className="text-sm text-blue-100">
-            Logistics Management System
+            International logistics
           </p>
         </div>
 
         <div className="flex gap-3">
 
-          <Link href="/admin" className={linkClass("/admin")}>
-            Dashboard
-          </Link>
-
-          <Link href="/manage" className={linkClass("/manage")}>
-            Manage
+          <Link href="/" className={linkClass("/")}>
+            Home
           </Link>
 
           <Link href="/track" className={linkClass("/track")}>
-            Track
+            Track Shipment
           </Link>
 
-          <Link href="/settings" className={linkClass("/settings")}>
-            Settings
+          <Link href="/#services" className={linkClass("/#services")}>
+            Services
+          </Link>
+
+          <Link href="/#contact" className={linkClass("/#contact")}>
+            Contact
           </Link>
 
         </div>
