@@ -8,6 +8,7 @@ import { ShipmentEditor, TRANSPORT_OPTIONS, type ShipmentEditForm, type Shipment
 import { isFinalMileStatus } from "../lib/shipment-current-location";
 import { automateShipmentOperations, getStatusTransitionWarning } from "../lib/operations-automation";
 import { weightToKilograms } from "../lib/package-fields";
+import { loadAdminShipmentHistory, type AdminShipmentHistoryEntry } from "../lib/shipment-history-admin";
 
 const STATUS_OPTIONS = [
   "Shipment Created",
@@ -25,14 +26,6 @@ const FILTERS = ["All", "Air", "Sea", "Delivered", "Out for Delivery", "Delayed"
 type Filter = (typeof FILTERS)[number];
 
 type Shipment = ShipmentEditorRecord;
-
-type ShipmentHistoryEntry = {
-  id: number;
-  status: string;
-  location: string | null;
-  note: string | null;
-  created_at: string;
-};
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").toLowerCase().trim();
@@ -87,6 +80,7 @@ function shipmentToForm(shipment: Shipment): ShipmentEditForm {
     receiver_receive_updates: String(shipment.receiver_receive_updates ?? false),
     shipment_status: shipment.shipment_status ?? "Shipment Created",
     update_note: "",
+    internal_note: "",
     weight_kg: shipment.weight_kg?.toString() ?? "",
     weight_unit: "KG",
     package_count: shipment.package_count?.toString() ?? "",
@@ -136,7 +130,7 @@ export default function ManagePage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
   const [viewing, setViewing] = useState<Shipment | null>(null);
-  const [viewHistory, setViewHistory] = useState<ShipmentHistoryEntry[]>([]);
+  const [viewHistory, setViewHistory] = useState<AdminShipmentHistoryEntry[]>([]);
   const [viewHistoryLoading, setViewHistoryLoading] = useState(false);
   const [viewHistoryError, setViewHistoryError] = useState("");
   const [editing, setEditing] = useState<Shipment | null>(null);
@@ -185,18 +179,23 @@ export default function ManagePage() {
     setEditSuccess("");
   }
 
+  function switchEditedShipment(shipmentId: number) {
+    const nextShipment = shipments.find((shipment) => shipment.id === shipmentId);
+    if (!nextShipment || nextShipment.id === editing?.id) return false;
+    const hasUnsavedChanges = Boolean(editing && editForm && JSON.stringify(editForm) !== JSON.stringify(shipmentToForm(editing)));
+    if (hasUnsavedChanges && !window.confirm("Switch shipment and discard unsaved changes in this editor?")) return false;
+    openEdit(nextShipment);
+    return true;
+  }
+
   async function openView(shipment: Shipment) {
     setViewing(shipment);
     setViewHistory([]);
     setViewHistoryError("");
     setViewHistoryLoading(true);
-    const { data, error: historyError } = await supabase
-      .from("shipment_history")
-      .select("id, status, location, note, created_at")
-      .eq("shipment_id", shipment.id)
-      .order("created_at", { ascending: true });
-    if (historyError) setViewHistoryError(historyError.message);
-    else setViewHistory((data ?? []) as ShipmentHistoryEntry[]);
+    const historyResult = await loadAdminShipmentHistory(shipment.id);
+    setViewHistory(historyResult.entries);
+    if (historyResult.error) setViewHistoryError(`Shipment history loaded where available, but private Internal Notes could not be read. ${historyResult.error.message}`);
     setViewHistoryLoading(false);
   }
 
@@ -227,7 +226,8 @@ export default function ManagePage() {
     const checkpointChanged = editing.current_route_checkpoint_id !== (editForm.current_route_checkpoint_id || null);
     const selectedCurrentLocation = authoritativeCurrentLocation?.trim() || editForm.current_location;
     const locationChanged = normalize(editing.current_location) !== normalize(selectedCurrentLocation);
-    if (editForm.update_note.trim() && !statusChanged && !checkpointChanged) validationErrors.update_note = "Change the shipment status or route checkpoint to attach this note to a new checkpoint event.";
+    if (editForm.update_note.trim() && !statusChanged && !checkpointChanged) validationErrors.update_note = "Change the shipment status or route checkpoint to attach this customer update to a new checkpoint event.";
+    if (editForm.internal_note.trim() && !statusChanged && !checkpointChanged) validationErrors.internal_note = "Change the shipment status or route checkpoint to attach this private note to a new checkpoint event.";
     if (Object.keys(validationErrors).length) {
       setEditErrors(validationErrors);
       setEditSuccess("");
@@ -281,7 +281,7 @@ export default function ManagePage() {
       return;
     }
     if (statusChanged || checkpointChanged) {
-      const { error: historyError } = await createTrackingEvent({
+      const { error: historyError, internalNoteError } = await createTrackingEvent({
         shipmentId: editing.id,
         trackingNumber: editing.tracking_number,
         status: editForm.shipment_status,
@@ -292,6 +292,7 @@ export default function ManagePage() {
         receiverAddress: editForm.receiver_address.trim() || null,
         estimatedDelivery: editForm.estimated_delivery || null,
         customNote: editForm.update_note.trim() || automation.customerNote,
+        internalNote: editForm.internal_note.trim() || null,
         routeCheckpointId: editForm.current_route_checkpoint_id || null,
       });
       if (historyError) {
@@ -300,11 +301,17 @@ export default function ManagePage() {
         setSaving(false);
         return;
       }
+      if (internalNoteError) {
+        setEditErrors({ form: `Shipment and customer Journey History were saved, but the private Internal Note could not be stored. Keep this editor open and retry Save Update; retry protection will reuse the existing history event. ${internalNoteError.message}` });
+        saveRequestInFlight.current = false;
+        setSaving(false);
+        return;
+      }
     }
     await loadShipments();
     const refreshed = updatedData as Shipment;
     setEditing(refreshed);
-    setEditForm({ ...shipmentToForm(refreshed), update_note: "" });
+    setEditForm({ ...shipmentToForm(refreshed), update_note: "", internal_note: "" });
     setEditSuccess("Shipment saved successfully. The shipment list and customer-facing derived state are now refreshed.");
     window.setTimeout(() => setEditSuccess(""), 6000);
     saveRequestInFlight.current = false;
@@ -434,7 +441,8 @@ export default function ManagePage() {
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-gray-800">{entry.status}</p>
                     <p className="mt-0.5 text-sm text-gray-600">{entry.location || "Location not recorded"}</p>
-                    {entry.note && <p className="mt-1 text-sm text-gray-500">{entry.note}</p>}
+                    {entry.note && <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2"><p className="text-[0.62rem] font-black uppercase tracking-wider text-blue-700">Customer Update</p><p className="mt-1 text-sm text-gray-600">{entry.note}</p></div>}
+                    {entry.internal_note && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"><p className="text-[0.62rem] font-black uppercase tracking-wider text-amber-800">Internal Note · Private</p><p className="mt-1 text-sm text-amber-950">{entry.internal_note}</p></div>}
                   </div>
                   <time dateTime={entry.created_at} className="text-xs font-medium text-gray-500 sm:text-right">{displayDateTime(entry.created_at)}</time>
                 </li>
@@ -444,7 +452,7 @@ export default function ManagePage() {
         </section>
       </Modal>}
 
-      {editing && editForm && <ShipmentEditor shipment={editing} form={editForm} statusOptions={STATUS_OPTIONS} errors={editErrors} saving={saving} success={editSuccess} onChange={updateEditField} onSubmit={saveEdit} onClose={closeEdit} />}
+      {editing && editForm && <ShipmentEditor shipment={editing} form={editForm} shipments={shipments} onSwitchShipment={switchEditedShipment} statusOptions={STATUS_OPTIONS} errors={editErrors} saving={saving} success={editSuccess} onChange={updateEditField} onSubmit={saveEdit} onClose={closeEdit} />}
     </main>
   );
 }

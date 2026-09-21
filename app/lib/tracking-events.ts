@@ -12,7 +12,17 @@ export type TrackingEventInput = {
   receiverAddress?: string | null;
   estimatedDelivery?: string | null;
   customNote?: string | null;
+  internalNote?: string | null;
   routeCheckpointId?: string | null;
+};
+
+type TrackingEventWriteError = { message: string };
+
+export type CreateTrackingEventResult = {
+  created: boolean;
+  historyId: number | null;
+  error: TrackingEventWriteError | null;
+  internalNoteError: TrackingEventWriteError | null;
 };
 
 export type BuiltTrackingEvent = {
@@ -92,27 +102,45 @@ export function buildTrackingEvent(input: TrackingEventInput, timestamp = new Da
   };
 }
 
-export async function createTrackingEvent(input: TrackingEventInput) {
+export async function createTrackingEvent(input: TrackingEventInput): Promise<CreateTrackingEventResult> {
   const { data: latest, error: latestError } = await supabase
     .from("shipment_history")
-    .select("status, route_checkpoint_id")
+    .select("id, status, route_checkpoint_id")
     .eq("shipment_id", input.shipmentId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (latestError) return { created: false, error: latestError };
-  if (latest && normalize(latest.status) === normalize(input.status) && (latest.route_checkpoint_id ?? null) === (input.routeCheckpointId ?? null)) return { created: false, error: null };
+  if (latestError) return { created: false, historyId: null, error: latestError, internalNoteError: null };
+  const duplicate = Boolean(latest && normalize(latest.status) === normalize(input.status) && (latest.route_checkpoint_id ?? null) === (input.routeCheckpointId ?? null));
 
   const event = buildTrackingEvent(input);
-  // tracking number and transport mode remain available through the related shipment;
-  // only columns supported by the existing shipment_history schema are persisted.
-  const { error } = await supabase.from("shipment_history").insert([{
-    shipment_id: event.shipmentId,
-    status: event.status,
-    location: event.location,
-    note: event.description,
-    route_checkpoint_id: input.routeCheckpointId ?? null,
-    created_at: event.timestamp,
-  }]);
-  return { created: !error, error };
+  let historyId = duplicate ? Number(latest?.id) : null;
+  if (!duplicate) {
+    // shipment_history.note is intentionally customer-facing. Private text is
+    // persisted only in shipment_history_internal_notes below.
+    const { data: inserted, error } = await supabase.from("shipment_history").insert([{
+      shipment_id: event.shipmentId,
+      status: event.status,
+      location: event.location,
+      note: event.description,
+      route_checkpoint_id: input.routeCheckpointId ?? null,
+      created_at: event.timestamp,
+    }]).select("id").single();
+    if (error || !inserted) return { created: false, historyId: null, error: error ?? { message: "Shipment history ID was not returned." }, internalNoteError: null };
+    historyId = Number(inserted.id);
+  }
+
+  if (!Number.isFinite(historyId)) return { created: false, historyId: null, error: { message: "Shipment history ID is invalid." }, internalNoteError: null };
+  const internalNote = input.internalNote?.trim();
+  if (internalNote) {
+    const { error: internalNoteError } = await supabase.from("shipment_history_internal_notes").upsert({
+      shipment_id: event.shipmentId,
+      shipment_history_id: historyId,
+      note: internalNote,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "shipment_history_id" });
+    if (internalNoteError) return { created: !duplicate, historyId, error: null, internalNoteError };
+  }
+
+  return { created: !duplicate, historyId, error: null, internalNoteError: null };
 }
